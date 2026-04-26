@@ -1,10 +1,10 @@
-"""Tests for Taxonomy class."""
+"""Tests for Population class."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from skillinfer import Taxonomy
+from skillinfer import Population
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def sample_df():
 
 
 def test_from_dataframe(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     assert tax.matrix.shape == (5, 4)
     assert len(tax.feature_names) == 4
     assert len(tax.entity_names) == 5
@@ -29,49 +29,49 @@ def test_from_dataframe(sample_df):
 
 
 def test_from_dataframe_normalize(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df, normalize=True)
+    tax = Population.from_dataframe(sample_df, normalize=True)
     assert tax.matrix.values.min() >= -1e-10
     assert tax.matrix.values.max() <= 1.0 + 1e-10
 
 
 def test_from_dataframe_no_normalize(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df, normalize=False)
+    tax = Population.from_dataframe(sample_df, normalize=False)
     np.testing.assert_array_equal(tax.matrix.values, sample_df.values)
 
 
 def test_entity(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df, normalize=False)
+    tax = Population.from_dataframe(sample_df, normalize=False)
     vec = tax.entity("a")
     np.testing.assert_array_almost_equal(vec, sample_df.loc["a"].values)
 
 
 def test_entity_not_found(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     with pytest.raises(KeyError):
         tax.entity("nonexistent")
 
 
-def test_new_state_population_mean(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
-    state = tax.new_state()
+def test_profile_population_mean(sample_df):
+    tax = Population.from_dataframe(sample_df)
+    state = tax.profile()
     np.testing.assert_array_almost_equal(state.mu, tax.population_mean)
 
 
-def test_new_state_prior_entity(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df, normalize=False)
-    state = tax.new_state(prior_entity="b")
+def test_profile_prior_entity(sample_df):
+    tax = Population.from_dataframe(sample_df, normalize=False)
+    state = tax.profile(prior_entity="b")
     np.testing.assert_array_almost_equal(state.mu, sample_df.loc["b"].values)
 
 
-def test_new_state_prior_mean(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+def test_profile_prior_mean(sample_df):
+    tax = Population.from_dataframe(sample_df)
     custom = np.array([0.1, 0.2, 0.3, 0.4])
-    state = tax.new_state(prior_mean=custom)
+    state = tax.profile(prior_mean=custom)
     np.testing.assert_array_almost_equal(state.mu, custom)
 
 
 def test_pca(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     pca = tax.pca(n_components=3)
     assert "explained_variance_ratio" in pca
     assert "cumulative" in pca
@@ -80,7 +80,7 @@ def test_pca(sample_df):
 
 
 def test_top_correlations(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     top = tax.top_correlations(k=3)
     assert len(top) == 3
     assert "feature_a" in top.columns
@@ -89,13 +89,13 @@ def test_top_correlations(sample_df):
 
 
 def test_condition_number(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     cond = tax.condition_number()
     assert cond >= 1.0
 
 
 def test_repr(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     r = repr(tax)
     assert "5 agents" in r
     assert "4 skills" in r
@@ -103,7 +103,7 @@ def test_repr(sample_df):
 
 
 def test_str(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     s = str(tax)
     assert "Top skill correlations" in s
     assert "Condition number" in s
@@ -111,7 +111,7 @@ def test_str(sample_df):
 
 
 def test_skill_vector(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df, normalize=False)
+    tax = Population.from_dataframe(sample_df, normalize=False)
     sv = tax.skill_vector("a")
     assert isinstance(sv, pd.Series)
     assert list(sv.index) == ["f1", "f2", "f3", "f4"]
@@ -119,7 +119,7 @@ def test_skill_vector(sample_df):
 
 
 def test_covariance_df(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     cov_df = tax.covariance_df
     assert isinstance(cov_df, pd.DataFrame)
     assert list(cov_df.columns) == tax.feature_names
@@ -128,7 +128,7 @@ def test_covariance_df(sample_df):
 
 
 def test_correlation_df(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df)
+    tax = Population.from_dataframe(sample_df)
     corr_df = tax.correlation_df
     assert isinstance(corr_df, pd.DataFrame)
     # diagonal should be ~1.0
@@ -137,6 +137,6 @@ def test_correlation_df(sample_df):
 
 
 def test_sample_covariance(sample_df):
-    tax = Taxonomy.from_dataframe(sample_df, covariance="sample")
+    tax = Population.from_dataframe(sample_df, covariance="sample")
     assert tax.shrinkage is None
     assert tax.covariance.shape == (4, 4)

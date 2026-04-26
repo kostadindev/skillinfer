@@ -19,15 +19,15 @@ def _make_taxonomy(n_entities=50, n_features=10, seed=42):
     data = np.clip(np.hstack([cog, phy]), 0, 1)
     features = [f"cog_{i}" for i in range(5)] + [f"phy_{i}" for i in range(5)]
     df = pd.DataFrame(data, columns=features)
-    return skillinfer.Taxonomy.from_dataframe(df)
+    return skillinfer.Population.from_dataframe(df)
 
 
 def test_full_workflow():
-    """Taxonomy → state → observe → query."""
+    """Population → state → observe → query."""
     tax = _make_taxonomy()
     assert tax.matrix.shape == (50, 10)
 
-    state = tax.new_state(obs_noise=0.05)
+    state = tax.profile()
     state.observe("cog_0", 0.9).observe("cog_1", 0.85)
 
     # Cognitive features should increase, physical should decrease
@@ -69,9 +69,9 @@ def test_prior_entity_closer_than_population():
     entity_name = tax.entity_names[0]
 
     # State with entity prior
-    s1 = tax.new_state(prior_entity=entity_name)
+    s1 = tax.profile(prior_entity=entity_name)
     # State with population prior
-    s2 = tax.new_state()
+    s2 = tax.profile()
 
     sim1 = s1.similarity(true_vec)
     sim2 = s2.similarity(true_vec)
@@ -85,7 +85,7 @@ def test_convergence_with_more_observations():
     features = tax.feature_names
 
     rng = np.random.default_rng(42)
-    state = tax.new_state(obs_noise=0.05)
+    state = tax.profile()
 
     sims = [state.similarity(true_vec)]
     for _ in range(8):
