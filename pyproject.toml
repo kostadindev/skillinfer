@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bayeskal"
+version = "0.1.0"
+description = "Bayesian feature inference via Kalman filtering with learned covariance structure"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Kostadin Devedzhiev" },
+]
+keywords = [
+    "bayesian-inference",
+    "kalman-filter",
+    "covariance",
+    "skill-inference",
+    "capability-estimation",
+    "transfer-learning",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "scikit-learn>=1.2",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.7"]
+dev = [
+    "matplotlib>=3.7",
+    "pytest>=7.0",
+]
+
+[project.urls]
+Repository = "https://github.com/kostadindev/bayeskal"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bayeskal"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
