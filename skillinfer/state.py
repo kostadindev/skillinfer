@@ -154,10 +154,10 @@ class Profile:
         return self
 
     def mean(self, feature: str | int | None = None) -> float | np.ndarray:
-        """Posterior mean. If feature given, return scalar; else full vector."""
+        """Posterior mean (clipped to >= 0). If feature given, return scalar; else full vector."""
         if feature is None:
-            return self.mu.copy()
-        return float(self.mu[self._resolve_index(feature)])
+            return np.maximum(self.mu, 0.0).copy()
+        return max(float(self.mu[self._resolve_index(feature)]), 0.0)
 
     def std(self, feature: str | int | None = None) -> float | np.ndarray:
         """Posterior standard deviation (sqrt of diagonal of Sigma)."""
@@ -183,26 +183,27 @@ class Profile:
         idx = np.argsort(stds)[::-1][:k]
         return pd.DataFrame({
             "feature": [self.feature_names[i] for i in idx],
-            "mean": [self.mu[i] for i in idx],
+            "mean": [max(self.mu[i], 0.0) for i in idx],
             "std": [stds[i] for i in idx],
         })
 
     def _build_dataframe(self, include_ci: bool = False, detail: bool = False, level: float = 0.95) -> pd.DataFrame:
         """Build the output DataFrame."""
         stds = np.sqrt(np.diag(self.Sigma))
+        mu = np.maximum(self.mu, 0.0)
 
         data: dict = {"feature": self.feature_names}
         if self._skills:
             descs = [self._skills.get(n, Skill(n)).description for n in self.feature_names]
             if any(descs):
                 data["description"] = descs
-        data["mean"] = self.mu
+        data["mean"] = mu
         data["std"] = stds
         if include_ci:
             from scipy.stats import norm
             z = norm.ppf(0.5 + level / 2)
-            data["ci_lower"] = self.mu - z * stds
-            data["ci_upper"] = self.mu + z * stds
+            data["ci_lower"] = np.maximum(mu - z * stds, 0.0)
+            data["ci_upper"] = mu + z * stds
         if detail:
             prior_stds = np.sqrt(np.maximum(self._prior_var, 1e-15))
             data["confidence"] = np.clip(1.0 - stds / prior_stds, 0.0, 1.0)
@@ -314,14 +315,14 @@ class Profile:
 
         if feature is not None:
             j = self._resolve_index(feature)
-            mu_j = float(self.mu[j])
+            mu_j = max(float(self.mu[j]), 0.0)
             std_j = float(np.sqrt(self.Sigma[j, j]))
             z = norm.ppf(0.5 + level / 2)
             result = {
                 "feature": self.feature_names[j] if isinstance(feature, int) else feature,
                 "mean": mu_j,
                 "std": std_j,
-                "ci_lower": mu_j - z * std_j,
+                "ci_lower": max(mu_j - z * std_j, 0.0),
                 "ci_upper": mu_j + z * std_j,
             }
             if detail:

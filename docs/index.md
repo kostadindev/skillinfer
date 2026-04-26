@@ -33,7 +33,7 @@ print(profile.predict())                 # predict all 120 skills
           Skill:Critical Thinking   0.96   0.15      0.66      1.25
               Skill:Programming     0.92   0.01      0.90      0.93  ← observed
                 Skill:Mathematics   0.85   0.12      0.61      1.09
-         Ability:Static Strength  -0.37   0.23     -0.82      0.07  ← anti-correlated
+         Ability:Static Strength   0.00   0.23      0.00      0.45  ← anti-correlated
 ...                                 ...    ...       ...       ...
 [120 rows x 5 columns]
 ```
