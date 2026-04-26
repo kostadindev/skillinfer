@@ -1,16 +1,16 @@
 """
-bayeskal: Predict all features from a few observations.
+skillinfer: Predict all features from a few observations.
 
 Bayesian feature inference via Kalman filtering with learned covariance.
-Given a population of entities described by K features, bayeskal learns
+Given a population of entities described by K features, skillinfer learns
 how features co-vary and uses that structure to infer unobserved features
 from partial observations.
 
 Quick start::
 
-    import bayeskal
+    import skillinfer
 
-    tax = bayeskal.Taxonomy.from_dataframe(df)   # learn covariance
+    tax = skillinfer.Taxonomy.from_dataframe(df)   # learn covariance
     state = tax.new_state(obs_noise=0.05)         # new entity
     state.observe("math", 0.9)                    # one observation
     print(state.mean("physics"))                  # predict another
@@ -25,10 +25,10 @@ Modules:
     validation     — Held-out evaluation (does transfer help?)
 """
 
-from bayeskal.taxonomy import Taxonomy
-from bayeskal.state import InferenceState
-from bayeskal import analysis
-from bayeskal import validation
+from skillinfer.taxonomy import Taxonomy
+from skillinfer.state import InferenceState
+from skillinfer import analysis
+from skillinfer import validation
 
 __version__ = "0.1.0"
 __all__ = ["Taxonomy", "InferenceState", "analysis", "validation"]

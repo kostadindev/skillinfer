@@ -10,7 +10,7 @@ End-to-end example: Predict LLM benchmark performance from one observation.
 
 import pandas as pd
 import numpy as np
-import bayeskal
+import skillinfer
 
 
 # ── Step 1: Fetch benchmark data from HuggingFace ──────────────────────
@@ -26,10 +26,19 @@ bench_cols = ["IFEval", "BBH", "MATH Lvl 5", "GPQA", "MUSR", "MMLU-PRO"]
 df = df_raw[["fullname"] + bench_cols].dropna().set_index("fullname")
 print(f"  {df.shape[0]} models x {df.shape[1]} benchmarks")
 
-# ── Step 2: Build the Taxonomy ──────────────────────────────────────────
+# ── Step 2: Hold out a model, build taxonomy from the rest ─────────────
 
-print("\nBuilding taxonomy...")
-tax = bayeskal.Taxonomy.from_dataframe(df, normalize=False)
+# Find a Llama model to hold out
+all_names = list(df.index)
+candidates = [n for n in all_names if "Llama-3" in n and "70B" in n]
+model_name = candidates[0] if candidates else all_names[100]
+
+true_scores = df.loc[model_name].values.copy()
+features = list(df.columns)
+
+# Build taxonomy from everyone EXCEPT the target (no data leakage)
+print(f"\nHolding out: {model_name}")
+tax = skillinfer.Taxonomy.from_dataframe(df.drop(model_name), normalize=False)
 print(f"  {tax}")
 print(f"  Condition number: {tax.condition_number():.1f}")
 
@@ -41,15 +50,6 @@ for _, row in top.iterrows():
 
 pca = tax.pca(n_components=3)
 print(f"\n  PCA: {pca['cumulative'][-1]:.1%} variance in 3 components")
-
-# ── Step 3: Hold out a model, observe 1 benchmark, predict the rest ────
-
-# Find a Llama model
-candidates = [n for n in tax.entity_names if "Llama-3" in n and "70B" in n]
-model_name = candidates[0] if candidates else tax.entity_names[100]
-
-true_scores = tax.entity(model_name)
-features = tax.feature_names
 
 print(f"\n{'='*65}")
 print(f"  New model: {model_name}")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from bayeskal._covariance import (
+from skillinfer._covariance import (
     ledoit_wolf_covariance,
     sample_covariance,
     correlation_matrix,
@@ -102,6 +102,10 @@ class Taxonomy:
         """Get the feature vector for a named entity."""
         return self.matrix.loc[name].values.copy()
 
+    def skill_vector(self, name: str) -> pd.Series:
+        """Get a named entity's skill vector as a labeled Series."""
+        return self.matrix.loc[name].copy()
+
     def new_state(
         self,
         prior_entity: str | None = None,
@@ -118,7 +122,7 @@ class Taxonomy:
 
         If neither prior_entity nor prior_mean is given, uses the population mean.
         """
-        from bayeskal.state import InferenceState
+        from skillinfer.state import InferenceState
 
         if prior_entity is not None:
             mu = self.entity(prior_entity)
@@ -168,10 +172,50 @@ class Taxonomy:
         """Condition number of the covariance matrix."""
         return float(np.linalg.cond(self.covariance))
 
+    @property
+    def covariance_df(self) -> pd.DataFrame:
+        """Covariance matrix as a labeled DataFrame."""
+        return pd.DataFrame(
+            self.covariance,
+            index=self.feature_names,
+            columns=self.feature_names,
+        )
+
+    @property
+    def correlation_df(self) -> pd.DataFrame:
+        """Correlation matrix as a labeled DataFrame."""
+        return pd.DataFrame(
+            self.correlation,
+            index=self.feature_names,
+            columns=self.feature_names,
+        )
+
     def __repr__(self) -> str:
         N, K = self.matrix.shape
-        s = f"Taxonomy({N} entities x {K} features"
+        s = f"Taxonomy({N} agents x {K} skills"
         if self.shrinkage is not None:
             s += f", shrinkage={self.shrinkage:.4f}"
         s += ")"
         return s
+
+    def __str__(self) -> str:
+        N, K = self.matrix.shape
+        lines = [repr(self)]
+        lines.append(f"  Condition number: {self.condition_number():.1f}")
+
+        pca = pca_embedding(self.matrix.values, min(5, K))
+        cum = pca["cumulative"]
+        dims = next((i + 1 for i, c in enumerate(cum) if c > 0.9), len(cum))
+        lines.append(f"  Effective dimensions: ~{dims} (90% variance)")
+
+        lines.append("")
+        lines.append("  Top skill correlations:")
+        top = self.top_correlations(k=min(5, K * (K - 1) // 2))
+        max_a = max(len(r["feature_a"]) for _, r in top.iterrows())
+        max_b = max(len(r["feature_b"]) for _, r in top.iterrows())
+        for _, row in top.iterrows():
+            lines.append(
+                f"    {row['feature_a']:>{max_a}} <-> {row['feature_b']:<{max_b}}"
+                f"  r = {row['correlation']:+.3f}"
+            )
+        return "\n".join(lines)

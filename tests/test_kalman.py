@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from bayeskal._kalman import kalman_update, kalman_update_batch, diagonal_update
+from skillinfer._kalman import kalman_update, kalman_update_batch, diagonal_update
 
 
 def test_kalman_update_reduces_variance():

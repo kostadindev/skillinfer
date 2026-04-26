@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import bayeskal
+import skillinfer
 
 
 def _make_taxonomy(n_entities=50, n_features=10, seed=42):
@@ -19,7 +19,7 @@ def _make_taxonomy(n_entities=50, n_features=10, seed=42):
     data = np.clip(np.hstack([cog, phy]), 0, 1)
     features = [f"cog_{i}" for i in range(5)] + [f"phy_{i}" for i in range(5)]
     df = pd.DataFrame(data, columns=features)
-    return bayeskal.Taxonomy.from_dataframe(df)
+    return skillinfer.Taxonomy.from_dataframe(df)
 
 
 def test_full_workflow():
@@ -47,7 +47,7 @@ def test_transfer_beats_diagonal():
     # Use larger taxonomy with stronger block structure for reliable transfer
     tax = _make_taxonomy(n_entities=200, n_features=10, seed=99)
 
-    results = bayeskal.validation.held_out_evaluation(
+    results = skillinfer.validation.held_out_evaluation(
         tax,
         frac_observed=0.2,
         n_splits=5,

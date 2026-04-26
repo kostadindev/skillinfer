@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bayeskal"
+name = "skillinfer"
 version = "0.1.0"
-description = "Bayesian feature inference via Kalman filtering with learned covariance structure"
+description = "Infer a full skill profile from a few observations. Few-shot capability estimation for AI agents and humans."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -13,12 +13,12 @@ authors = [
     { name = "Kostadin Devedzhiev" },
 ]
 keywords = [
-    "bayesian-inference",
-    "kalman-filter",
-    "covariance",
     "skill-inference",
     "capability-estimation",
-    "transfer-learning",
+    "ai-agents",
+    "bayesian-inference",
+    "kalman-filter",
+    "human-ai-orchestration",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -40,12 +40,16 @@ dev = [
     "matplotlib>=3.7",
     "pytest>=7.0",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "pymdown-extensions>=10.0",
+]
 
 [project.urls]
-Repository = "https://github.com/kostadindev/bayeskal"
+Repository = "https://github.com/kostadindev/skillinfer"
 
 [tool.hatch.build.targets.wheel]
-packages = ["bayeskal"]
+packages = ["skillinfer"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

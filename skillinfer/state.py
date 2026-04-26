@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from bayeskal._kalman import kalman_update, kalman_update_batch
+from skillinfer._kalman import kalman_update, kalman_update_batch
 
 
 class InferenceState:
@@ -137,6 +137,85 @@ class InferenceState:
             return 0.0
         return float(dot / (norm_a * norm_b))
 
+    def uncertainty_ratio(self, Sigma_0: np.ndarray) -> float:
+        """Fraction of prior uncertainty remaining: tr(Sigma) / tr(Sigma_0).
+
+        A value of 0.5 means uncertainty has halved since the prior.
+        Useful for deciding when enough observations have been collected.
+
+        Parameters
+        ----------
+        Sigma_0 : (K, K) ndarray, typically taxonomy.covariance.
+        """
+        tr_0 = np.trace(Sigma_0)
+        if tr_0 < 1e-15:
+            return 0.0
+        return float(np.trace(self.Sigma) / tr_0)
+
+    def rmse(self, true_vector: np.ndarray) -> float:
+        """Root mean squared error between posterior mean and a target."""
+        true_vector = np.asarray(true_vector, dtype=float)
+        return float(np.sqrt(np.mean((self.mu - true_vector) ** 2)))
+
+    def mae(self, true_vector: np.ndarray) -> float:
+        """Mean absolute error between posterior mean and a target."""
+        true_vector = np.asarray(true_vector, dtype=float)
+        return float(np.mean(np.abs(self.mu - true_vector)))
+
+    def predict(
+        self, feature: str | int | None = None, level: float = 0.95
+    ) -> pd.DataFrame | dict:
+        """Predict skill values with uncertainty.
+
+        Parameters
+        ----------
+        feature : if given, predict one skill. If None, predict all.
+        level : confidence level for the interval (default 0.95).
+
+        Returns
+        -------
+        If feature is given: dict with keys mean, std, ci_lower, ci_upper.
+        If feature is None: DataFrame with all skills and their predictions.
+        """
+        from scipy.stats import norm
+
+        z = norm.ppf(0.5 + level / 2)
+
+        if feature is not None:
+            j = self._resolve_index(feature)
+            mu_j = float(self.mu[j])
+            std_j = float(np.sqrt(self.Sigma[j, j]))
+            return {
+                "feature": self.feature_names[j] if isinstance(feature, int) else feature,
+                "mean": mu_j,
+                "std": std_j,
+                "ci_lower": mu_j - z * std_j,
+                "ci_upper": mu_j + z * std_j,
+            }
+
+        stds = np.sqrt(np.diag(self.Sigma))
+        return pd.DataFrame({
+            "feature": self.feature_names,
+            "mean": self.mu,
+            "std": stds,
+            "ci_lower": self.mu - z * stds,
+            "ci_upper": self.mu + z * stds,
+        })
+
+    @property
+    def agent_vector(self) -> pd.Series:
+        """The inferred skill profile as a named Series (posterior mean)."""
+        return pd.Series(self.mu, index=self.feature_names, name="agent_vector")
+
+    @property
+    def covariance_matrix(self) -> pd.DataFrame:
+        """Posterior covariance as a labeled DataFrame."""
+        return pd.DataFrame(
+            self.Sigma,
+            index=self.feature_names,
+            columns=self.feature_names,
+        )
+
     def copy(self) -> InferenceState:
         """Deep copy of the state."""
         return InferenceState(
@@ -150,3 +229,13 @@ class InferenceState:
         K = len(self.mu)
         mean_std = float(np.sqrt(np.diag(self.Sigma)).mean())
         return f"InferenceState(K={K}, n_obs={self.n_observations}, mean_std={mean_std:.4f})"
+
+    def __str__(self) -> str:
+        stds = np.sqrt(np.diag(self.Sigma))
+        max_name = max(len(n) for n in self.feature_names)
+        lines = [f"Agent Vector ({self.n_observations} observations, {len(self.mu)} skills)"]
+        lines.append(f"{'Skill':<{max_name}}  {'Mean':>8}  {'± Std':>8}")
+        lines.append("-" * (max_name + 20))
+        for i, name in enumerate(self.feature_names):
+            lines.append(f"{name:<{max_name}}  {self.mu[i]:>8.4f}  {stds[i]:>8.4f}")
+        return "\n".join(lines)
