@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bayeskal import Taxonomy
+from skillinfer import Taxonomy
 
 
 @pytest.fixture
@@ -97,9 +97,43 @@ def test_condition_number(sample_df):
 def test_repr(sample_df):
     tax = Taxonomy.from_dataframe(sample_df)
     r = repr(tax)
-    assert "5 entities" in r
-    assert "4 features" in r
+    assert "5 agents" in r
+    assert "4 skills" in r
     assert "shrinkage" in r
+
+
+def test_str(sample_df):
+    tax = Taxonomy.from_dataframe(sample_df)
+    s = str(tax)
+    assert "Top skill correlations" in s
+    assert "Condition number" in s
+    assert "Effective dimensions" in s
+
+
+def test_skill_vector(sample_df):
+    tax = Taxonomy.from_dataframe(sample_df, normalize=False)
+    sv = tax.skill_vector("a")
+    assert isinstance(sv, pd.Series)
+    assert list(sv.index) == ["f1", "f2", "f3", "f4"]
+    np.testing.assert_array_almost_equal(sv.values, sample_df.loc["a"].values)
+
+
+def test_covariance_df(sample_df):
+    tax = Taxonomy.from_dataframe(sample_df)
+    cov_df = tax.covariance_df
+    assert isinstance(cov_df, pd.DataFrame)
+    assert list(cov_df.columns) == tax.feature_names
+    assert list(cov_df.index) == tax.feature_names
+    np.testing.assert_array_almost_equal(cov_df.values, tax.covariance)
+
+
+def test_correlation_df(sample_df):
+    tax = Taxonomy.from_dataframe(sample_df)
+    corr_df = tax.correlation_df
+    assert isinstance(corr_df, pd.DataFrame)
+    # diagonal should be ~1.0
+    for i in range(len(tax.feature_names)):
+        assert abs(corr_df.iloc[i, i] - 1.0) < 1e-10
 
 
 def test_sample_covariance(sample_df):

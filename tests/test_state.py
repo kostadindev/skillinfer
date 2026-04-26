@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bayeskal import Taxonomy, InferenceState
+from skillinfer import Taxonomy, InferenceState
 
 
 @pytest.fixture
@@ -116,6 +116,56 @@ def test_copy_independence(taxonomy):
     assert copy.n_observations == 1
     assert state.n_observations == 0
     assert not np.allclose(copy.mu, state.mu)
+
+
+def test_predict_single(taxonomy):
+    state = taxonomy.new_state()
+    state.observe("math", 0.9)
+    pred = state.predict("physics")
+    assert isinstance(pred, dict)
+    assert "mean" in pred
+    assert "std" in pred
+    assert "ci_lower" in pred
+    assert "ci_upper" in pred
+    assert pred["ci_lower"] < pred["mean"] < pred["ci_upper"]
+
+
+def test_predict_all(taxonomy):
+    state = taxonomy.new_state()
+    state.observe("math", 0.9)
+    df = state.predict()
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 6
+    assert set(df.columns) == {"feature", "mean", "std", "ci_lower", "ci_upper"}
+    assert (df["ci_lower"] < df["mean"]).all()
+    assert (df["mean"] < df["ci_upper"]).all()
+
+
+def test_agent_vector(taxonomy):
+    state = taxonomy.new_state()
+    state.observe("math", 0.9)
+    av = state.agent_vector
+    assert isinstance(av, pd.Series)
+    assert av.name == "agent_vector"
+    assert list(av.index) == taxonomy.feature_names
+    np.testing.assert_array_almost_equal(av.values, state.mu)
+
+
+def test_covariance_matrix(taxonomy):
+    state = taxonomy.new_state()
+    cov = state.covariance_matrix
+    assert isinstance(cov, pd.DataFrame)
+    assert list(cov.columns) == taxonomy.feature_names
+    assert list(cov.index) == taxonomy.feature_names
+
+
+def test_str(taxonomy):
+    state = taxonomy.new_state()
+    state.observe("math", 0.9)
+    s = str(state)
+    assert "Agent Vector" in s
+    assert "1 observations" in s
+    assert "math" in s
 
 
 def test_repr(taxonomy):
