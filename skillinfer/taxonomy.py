@@ -1,4 +1,4 @@
-"""Taxonomy: a population of entities described by K features."""
+"""Population: a population of entities described by K features."""
 
 from __future__ import annotations
 
@@ -11,9 +11,10 @@ from skillinfer._covariance import (
     correlation_matrix,
     pca_embedding,
 )
+from skillinfer.types import Skill
 
 
-class Taxonomy:
+class Population:
     """A population of entities described by K features, with learned covariance.
 
     The covariance structure encodes how features co-vary across the population.
@@ -52,6 +53,41 @@ class Taxonomy:
         self.population_mean = matrix.values.mean(axis=0)
         self.shrinkage = shrinkage
         self._feature_to_idx = {name: i for i, name in enumerate(self.feature_names)}
+        self._skills: dict[str, Skill] = {
+            name: Skill(name) for name in self.feature_names
+        }
+
+    @property
+    def skills(self) -> list[Skill]:
+        """The skill dimensions with their descriptions."""
+        return [self._skills[name] for name in self.feature_names]
+
+    def describe_skills(
+        self, descriptions: dict[str, str] | list[Skill]
+    ) -> None:
+        """Attach descriptions to skill dimensions.
+
+        Parameters
+        ----------
+        descriptions : dict mapping skill names to descriptions,
+            or a list of Skill objects.
+
+        Examples
+        --------
+        >>> tax.describe_skills({
+        ...     "BBH": "Big-Bench Hard: diverse challenging tasks",
+        ...     "MMLU-PRO": "Professional-level multitask understanding",
+        ... })
+        >>> tax.describe_skills([Skill("BBH", "Big-Bench Hard")])
+        """
+        if isinstance(descriptions, list):
+            for skill in descriptions:
+                if skill.name in self._skills:
+                    self._skills[skill.name] = skill
+        else:
+            for name, desc in descriptions.items():
+                if name in self._skills:
+                    self._skills[name] = Skill(name, desc)
 
     @classmethod
     def from_dataframe(
@@ -59,8 +95,8 @@ class Taxonomy:
         df: pd.DataFrame,
         normalize: bool = True,
         covariance: str = "ledoit-wolf",
-    ) -> Taxonomy:
-        """Construct a Taxonomy from a pandas DataFrame.
+    ) -> Population:
+        """Construct a Population from a pandas DataFrame.
 
         Parameters
         ----------
@@ -69,6 +105,11 @@ class Taxonomy:
         covariance : "ledoit-wolf" (default, recommended) or "sample".
         """
         df = df.copy()
+        if df.isna().any().any():
+            raise ValueError(
+                "DataFrame contains NaN values. Drop or impute them before "
+                "building a Population: df.dropna() or df.fillna(method)."
+            )
         if normalize:
             col_min = df.min()
             col_range = df.max() - col_min
@@ -87,13 +128,53 @@ class Taxonomy:
         return cls(matrix=df, covariance=Sigma, shrinkage=alpha)
 
     @classmethod
+    def from_covariance(
+        cls,
+        covariance: np.ndarray,
+        feature_names: list[str],
+        population_mean: np.ndarray,
+    ) -> Population:
+        """Construct a Population from a pre-computed covariance matrix.
+
+        Use this when you have a domain-expert covariance (e.g., from
+        a previous study) rather than estimating it from data.
+
+        Parameters
+        ----------
+        covariance : (K, K) covariance matrix.
+        feature_names : list of K feature names.
+        population_mean : (K,) mean vector.
+        """
+        K = len(feature_names)
+        covariance = np.asarray(covariance, dtype=float)
+        population_mean = np.asarray(population_mean, dtype=float)
+        if covariance.shape != (K, K):
+            raise ValueError(
+                f"Covariance shape {covariance.shape} doesn't match "
+                f"{K} features."
+            )
+        if population_mean.shape != (K,):
+            raise ValueError(
+                f"Mean shape {population_mean.shape} doesn't match "
+                f"{K} features."
+            )
+        df = pd.DataFrame(
+            population_mean.reshape(1, -1),
+            columns=feature_names,
+            index=["_population_mean"],
+        )
+        tax = cls(matrix=df, covariance=covariance, shrinkage=None)
+        tax.population_mean = population_mean
+        return tax
+
+    @classmethod
     def from_csv(
         cls,
         path: str,
         index_col: int | str = 0,
         normalize: bool = True,
         covariance: str = "ledoit-wolf",
-    ) -> Taxonomy:
+    ) -> Population:
         """Construct from a CSV file."""
         df = pd.read_csv(path, index_col=index_col)
         return cls.from_dataframe(df, normalize=normalize, covariance=covariance)
@@ -106,23 +187,26 @@ class Taxonomy:
         """Get a named entity's skill vector as a labeled Series."""
         return self.matrix.loc[name].copy()
 
-    def new_state(
+    def profile(
         self,
         prior_entity: str | None = None,
         prior_mean: np.ndarray | None = None,
-        obs_noise: float = 0.05,
+        noise: float | None = None,
     ):
-        """Create an InferenceState for a new individual.
+        """Create a Profile for a new individual.
 
         Parameters
         ----------
         prior_entity : if given, use this entity's vector as the prior mean.
         prior_mean : if given, use this directly as the prior mean.
-        obs_noise : observation noise standard deviation.
+        noise : observation noise (std dev). Models measurement error,
+            e.g. a benchmark score of 55 might really be 53-57. Higher
+            noise = gentler updates, more residual uncertainty. Default
+            is 5% of the average feature spread in the population.
 
         If neither prior_entity nor prior_mean is given, uses the population mean.
         """
-        from skillinfer.state import InferenceState
+        from skillinfer.state import Profile
 
         if prior_entity is not None:
             mu = self.entity(prior_entity)
@@ -131,12 +215,18 @@ class Taxonomy:
         else:
             mu = self.population_mean.copy()
 
-        return InferenceState(
+        if noise is None:
+            noise = float(np.sqrt(np.diag(self.covariance)).mean() * 0.05)
+            noise = max(noise, 1e-8)
+
+        profile = Profile(
             mu=mu,
             Sigma=self.covariance.copy(),
             feature_names=self.feature_names,
-            obs_noise=obs_noise,
+            noise=noise,
         )
+        profile._skills = dict(self._skills)
+        return profile
 
     def pca(self, n_components: int = 15) -> dict:
         """PCA summary of the entity-feature matrix.
@@ -192,7 +282,7 @@ class Taxonomy:
 
     def __repr__(self) -> str:
         N, K = self.matrix.shape
-        s = f"Taxonomy({N} agents x {K} skills"
+        s = f"Population({N} agents x {K} skills"
         if self.shrinkage is not None:
             s += f", shrinkage={self.shrinkage:.4f}"
         s += ")"

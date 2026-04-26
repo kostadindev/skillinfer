@@ -31,7 +31,8 @@ def kalman_update(
     Sigma = Sigma.copy()
 
     S_j = Sigma[:, j]
-    K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
+    denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
+    K_gain = S_j / denom
     mu += K_gain * (y_j - mu[j])
     Sigma -= np.outer(K_gain, S_j)
 
@@ -68,7 +69,8 @@ def kalman_update_batch(
 
     for j, y_j in zip(obs_indices, obs_values):
         S_j = Sigma[:, j]
-        K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
+        denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
+        K_gain = S_j / denom
         mu += K_gain * (y_j - mu[j])
         Sigma -= np.outer(K_gain, S_j)
 

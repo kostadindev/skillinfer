@@ -19,7 +19,7 @@ def correlation_heatmap(
 
     Parameters
     ----------
-    taxonomy : Taxonomy instance.
+    taxonomy : Population instance.
     cluster : if True, reorder features by hierarchical clustering.
     figsize : figure size (ignored if ax is provided).
     ax : matplotlib Axes (optional).
@@ -70,7 +70,7 @@ def scree_plot(
 
     Parameters
     ----------
-    taxonomy : Taxonomy instance.
+    taxonomy : Population instance.
     max_components : maximum number of components to show.
     ax : matplotlib Axes (optional).
 
@@ -118,7 +118,7 @@ def posterior_profile(
 
     Parameters
     ----------
-    state : InferenceState instance.
+    state : Profile instance.
     reference : (K,) reference vector for comparison (e.g., prior mean).
     top_k : number of features to show (sorted by posterior mean).
     ax : matplotlib Axes (optional).

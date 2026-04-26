@@ -89,7 +89,7 @@ def held_out_evaluation(
 
     Parameters
     ----------
-    taxonomy : Taxonomy instance.
+    taxonomy : Population instance.
     frac_observed : fraction(s) of features to observe (scalar or list).
     n_splits : number of random train/test splits.
     obs_noise : observation noise standard deviation.
@@ -205,8 +205,8 @@ def uncertainty_shrinkage(state_or_Sigma, Sigma_0: np.ndarray) -> float:
 
     Parameters
     ----------
-    state_or_Sigma : InferenceState or (K, K) ndarray.
-        The current posterior covariance. If an InferenceState, its
+    state_or_Sigma : Profile or (K, K) ndarray.
+        The current posterior covariance. If an Profile, its
         .Sigma attribute is used.
     Sigma_0 : (K, K) ndarray.
         The prior covariance (e.g., taxonomy.covariance).

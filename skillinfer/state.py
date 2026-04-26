@@ -1,17 +1,30 @@
-"""InferenceState: mutable posterior for one entity."""
+"""Profile: a skill profile that gets sharper with observations."""
 
 from __future__ import annotations
+
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 
 from skillinfer._kalman import kalman_update, kalman_update_batch
+from skillinfer.types import Skill, Task
 
 
-class InferenceState:
+class MatchResult(NamedTuple):
+    """Result of matching an agent to a task vector."""
+
+    score: float
+    std: float
+    ci_lower: float
+    ci_upper: float
+    p_above_threshold: float | None
+
+
+class Profile:
     """Posterior belief about one entity's feature vector.
 
-    Created via ``Taxonomy.new_state()``. Updated via ``observe()`` calls.
+    Created via ``Population.profile()``. Updated via ``observe()`` calls.
 
     Attributes
     ----------
@@ -19,10 +32,8 @@ class InferenceState:
         (K,) posterior mean.
     Sigma : np.ndarray
         (K, K) posterior covariance.
-    obs_noise : float
-        Observation noise standard deviation.
     feature_names : list[str]
-        Feature names inherited from Taxonomy.
+        Feature names inherited from Population.
     n_observations : int
         Number of observe() calls applied.
     """
@@ -32,23 +43,36 @@ class InferenceState:
         mu: np.ndarray,
         Sigma: np.ndarray,
         feature_names: list[str],
-        obs_noise: float = 0.05,
+        noise: float = 1e-6,
     ):
         self.mu = mu
         self.Sigma = Sigma
+        self._prior_var = np.diag(Sigma).copy()
         self.feature_names = feature_names
-        self.obs_noise = obs_noise
+        self.noise = noise
         self.n_observations = 0
+        self._observed: set[int] = set()
         self._name_to_idx = {name: i for i, name in enumerate(feature_names)}
+        self._skills: dict[str, Skill] = {}
 
-    def _resolve_index(self, feature: str | int) -> int:
+    def _resolve_index(self, feature: str | int | Skill) -> int:
+        if isinstance(feature, Skill):
+            feature = feature.name
         if isinstance(feature, str):
             if feature not in self._name_to_idx:
-                raise KeyError(f"Unknown feature: {feature!r}")
+                raise KeyError(
+                    f"Unknown feature: {feature!r}. "
+                    f"Available features: {self.feature_names}"
+                )
             return self._name_to_idx[feature]
-        return int(feature)
+        idx = int(feature)
+        if idx < 0 or idx >= len(self.mu):
+            raise IndexError(
+                f"Feature index {idx} out of range for {len(self.mu)} features."
+            )
+        return idx
 
-    def observe(self, feature: str | int, value: float) -> InferenceState:
+    def observe(self, feature: str | int, value: float) -> Profile:
         """Observe one feature value. Updates mu and Sigma in place.
 
         Parameters
@@ -60,14 +84,15 @@ class InferenceState:
         """
         j = self._resolve_index(feature)
         self.mu, self.Sigma = kalman_update(
-            self.mu, self.Sigma, j, value, self.obs_noise
+            self.mu, self.Sigma, j, value, self.noise
         )
+        self._observed.add(j)
         self.n_observations += 1
         return self
 
     def observe_many(
         self, observations: dict[str | int, float]
-    ) -> InferenceState:
+    ) -> Profile:
         """Observe multiple features at once.
 
         Parameters
@@ -79,8 +104,10 @@ class InferenceState:
         indices = np.array([self._resolve_index(f) for f in observations])
         values = np.array(list(observations.values()), dtype=float)
         self.mu, self.Sigma = kalman_update_batch(
-            self.mu, self.Sigma, indices, values, self.obs_noise
+            self.mu, self.Sigma, indices, values, self.noise
         )
+        for j in indices:
+            self._observed.add(int(j))
         self.n_observations += len(observations)
         return self
 
@@ -118,14 +145,41 @@ class InferenceState:
             "std": [stds[i] for i in idx],
         })
 
-    def to_dataframe(self) -> pd.DataFrame:
-        """Full posterior as a DataFrame with columns [feature, mean, std]."""
+    def _build_dataframe(self, include_ci: bool = False, detail: bool = False, level: float = 0.95) -> pd.DataFrame:
+        """Build the output DataFrame."""
         stds = np.sqrt(np.diag(self.Sigma))
-        return pd.DataFrame({
-            "feature": self.feature_names,
-            "mean": self.mu,
-            "std": stds,
-        })
+
+        data: dict = {"feature": self.feature_names}
+        if self._skills:
+            descs = [self._skills.get(n, Skill(n)).description for n in self.feature_names]
+            if any(descs):
+                data["description"] = descs
+        data["mean"] = self.mu
+        data["std"] = stds
+        if include_ci:
+            from scipy.stats import norm
+            z = norm.ppf(0.5 + level / 2)
+            data["ci_lower"] = self.mu - z * stds
+            data["ci_upper"] = self.mu + z * stds
+        if detail:
+            prior_stds = np.sqrt(np.maximum(self._prior_var, 1e-15))
+            data["confidence"] = np.clip(1.0 - stds / prior_stds, 0.0, 1.0)
+            data["source"] = [
+                "observed" if i in self._observed else "predicted"
+                for i in range(len(self.mu))
+            ]
+        return pd.DataFrame(data)
+
+    def to_dataframe(self, detail: bool = False) -> pd.DataFrame:
+        """Full posterior as a DataFrame.
+
+        Parameters
+        ----------
+        detail : if True, include confidence and source columns.
+            confidence is 0-1 (how much uncertainty was reduced).
+            source is "observed" or "predicted".
+        """
+        return self._build_dataframe(include_ci=False, detail=detail)
 
     def similarity(self, other: np.ndarray) -> float:
         """Cosine similarity between posterior mean and a target vector."""
@@ -163,7 +217,7 @@ class InferenceState:
         return float(np.mean(np.abs(self.mu - true_vector)))
 
     def predict(
-        self, feature: str | int | None = None, level: float = 0.95
+        self, feature: str | int | None = None, level: float = 0.95, detail: bool = False
     ) -> pd.DataFrame | dict:
         """Predict skill values with uncertainty.
 
@@ -171,36 +225,34 @@ class InferenceState:
         ----------
         feature : if given, predict one skill. If None, predict all.
         level : confidence level for the interval (default 0.95).
+        detail : if True, include confidence and source columns.
 
         Returns
         -------
         If feature is given: dict with keys mean, std, ci_lower, ci_upper.
-        If feature is None: DataFrame with all skills and their predictions.
+        If feature is None: DataFrame with all skills and CIs.
         """
         from scipy.stats import norm
-
-        z = norm.ppf(0.5 + level / 2)
 
         if feature is not None:
             j = self._resolve_index(feature)
             mu_j = float(self.mu[j])
             std_j = float(np.sqrt(self.Sigma[j, j]))
-            return {
+            z = norm.ppf(0.5 + level / 2)
+            result = {
                 "feature": self.feature_names[j] if isinstance(feature, int) else feature,
                 "mean": mu_j,
                 "std": std_j,
                 "ci_lower": mu_j - z * std_j,
                 "ci_upper": mu_j + z * std_j,
             }
+            if detail:
+                prior_std = float(np.sqrt(max(self._prior_var[j], 1e-15)))
+                result["confidence"] = float(np.clip(1.0 - std_j / prior_std, 0.0, 1.0))
+                result["source"] = "observed" if j in self._observed else "predicted"
+            return result
 
-        stds = np.sqrt(np.diag(self.Sigma))
-        return pd.DataFrame({
-            "feature": self.feature_names,
-            "mean": self.mu,
-            "std": stds,
-            "ci_lower": self.mu - z * stds,
-            "ci_upper": self.mu + z * stds,
-        })
+        return self._build_dataframe(include_ci=True, detail=detail, level=level)
 
     @property
     def agent_vector(self) -> pd.Series:
@@ -216,19 +268,89 @@ class InferenceState:
             columns=self.feature_names,
         )
 
-    def copy(self) -> InferenceState:
+    def copy(self) -> Profile:
         """Deep copy of the state."""
-        return InferenceState(
+        new = Profile(
             mu=self.mu.copy(),
             Sigma=self.Sigma.copy(),
             feature_names=list(self.feature_names),
-            obs_noise=self.obs_noise,
+            noise=self.noise,
+        )
+        new.n_observations = self.n_observations
+        new._observed = set(self._observed)
+        new._prior_var = self._prior_var.copy()
+        new._skills = dict(self._skills)
+        return new
+
+    def match_score(
+        self,
+        task_vector: dict[str, float] | np.ndarray | Task,
+        threshold: float | None = None,
+        level: float = 0.95,
+    ) -> MatchResult:
+        """Score this agent against a task vector.
+
+        Computes the expected weighted-average performance and propagates
+        uncertainty through the linear combination. Weights are normalised
+        so the score stays on the same scale as the underlying skills.
+
+        Parameters
+        ----------
+        task_vector : Task, dict mapping feature names to importance
+            weights, or a (K,) numpy array. Weights are relative
+            importance — they are normalised internally.
+        threshold : if given, compute P(score > threshold).
+        level : confidence level for the interval (default 0.95).
+
+        Returns
+        -------
+        MatchResult with fields: score, std, ci_lower, ci_upper,
+            p_above_threshold (None if no threshold given).
+        """
+        from scipy.stats import norm
+
+        if isinstance(task_vector, Task):
+            task_vector = task_vector.weights
+        if isinstance(task_vector, dict):
+            w = np.zeros(len(self.mu))
+            for feat, weight in task_vector.items():
+                w[self._resolve_index(feat)] = weight
+        else:
+            w = np.asarray(task_vector, dtype=float)
+            if w.shape != self.mu.shape:
+                raise ValueError(
+                    f"task_vector shape {w.shape} doesn't match "
+                    f"feature count {self.mu.shape}"
+                )
+
+        w_sum = float(np.sum(np.abs(w)))
+        if w_sum > 1e-15:
+            w = w / w_sum
+
+        score = float(w @ self.mu)
+        var = float(w @ self.Sigma @ w)
+        std = float(np.sqrt(max(var, 0.0)))
+
+        z = norm.ppf(0.5 + level / 2)
+        ci_lower = score - z * std
+        ci_upper = score + z * std
+
+        p_above = None
+        if threshold is not None and std > 1e-15:
+            p_above = float(1.0 - norm.cdf((threshold - score) / std))
+
+        return MatchResult(
+            score=score,
+            std=std,
+            ci_lower=ci_lower,
+            ci_upper=ci_upper,
+            p_above_threshold=p_above,
         )
 
     def __repr__(self) -> str:
         K = len(self.mu)
         mean_std = float(np.sqrt(np.diag(self.Sigma)).mean())
-        return f"InferenceState(K={K}, n_obs={self.n_observations}, mean_std={mean_std:.4f})"
+        return f"Profile(K={K}, n_obs={self.n_observations}, mean_std={mean_std:.4f})"
 
     def __str__(self) -> str:
         stds = np.sqrt(np.diag(self.Sigma))

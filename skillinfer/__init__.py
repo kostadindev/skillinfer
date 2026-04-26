@@ -8,27 +8,79 @@ from partial observations.
 
 Quick start::
 
+    import pandas as pd
     import skillinfer
 
-    tax = skillinfer.Taxonomy.from_dataframe(df)   # learn covariance
-    state = tax.new_state(obs_noise=0.05)         # new entity
-    state.observe("math", 0.9)                    # one observation
-    print(state.mean("physics"))                  # predict another
-    print(state.most_uncertain(k=5))              # what to observe next?
+    df = pd.read_parquet("hf://datasets/open-llm-leaderboard/...")
+    pop = skillinfer.Population.from_dataframe(df)
+    profile = pop.profile()
+    profile.observe("BBH", 55.0)
+    print(profile.predict())
 
 Classes:
-    Taxonomy       — Population model (entity-feature matrix + covariance)
-    InferenceState — Posterior belief about one entity (mu + Sigma)
+    Population — Learned covariance structure from a population
+    Profile    — Skill profile for one entity (gets sharper with observations)
 
 Modules:
-    analysis       — Visualization (correlation heatmap, scree plot, etc.)
-    validation     — Held-out evaluation (does transfer help?)
+    analysis   — Visualization (correlation heatmap, scree plot, etc.)
+    validation — Held-out evaluation (does transfer help?)
 """
 
-from skillinfer.taxonomy import Taxonomy
-from skillinfer.state import InferenceState
+from skillinfer.types import Skill, Task
+from skillinfer.taxonomy import Population
+from skillinfer.state import Profile, MatchResult
 from skillinfer import analysis
+from skillinfer import datasets
 from skillinfer import validation
 
+import numpy as np
+import pandas as pd
+
+
+def rank_agents(
+    task_vector: dict[str, float] | np.ndarray | Task,
+    profiles: dict[str, Profile],
+    threshold: float | None = None,
+) -> pd.DataFrame:
+    """Rank agents by expected performance on a task.
+
+    Parameters
+    ----------
+    task_vector : dict mapping feature names to importance weights,
+        or a (K,) numpy array.
+    profiles : dict mapping agent name/ID to their Profile.
+    threshold : if given, include P(score > threshold) in results.
+
+    Returns
+    -------
+    DataFrame sorted by expected_score (descending) with columns:
+        [agent, expected_score, std, p_above_threshold]
+    """
+    if not profiles:
+        return pd.DataFrame(
+            columns=["agent", "expected_score", "std", "p_above_threshold"]
+        )
+    rows = []
+    for name, profile in profiles.items():
+        result = profile.match_score(task_vector, threshold=threshold)
+        rows.append({
+            "agent": name,
+            "expected_score": result.score,
+            "std": result.std,
+            "p_above_threshold": result.p_above_threshold,
+        })
+    df = pd.DataFrame(rows)
+    return df.sort_values("expected_score", ascending=False).reset_index(drop=True)
+
+
 __version__ = "0.1.0"
-__all__ = ["Taxonomy", "InferenceState", "analysis", "validation"]
+__all__ = [
+    "Skill",
+    "Task",
+    "Population",
+    "Profile",
+    "MatchResult",
+    "rank_agents",
+    "analysis",
+    "validation",
+]
