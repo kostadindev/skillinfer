@@ -85,7 +85,7 @@ $$
 \text{Corr}_{i,j} = \frac{\Sigma_{i,j}}{\sqrt{\Sigma_{i,i}} \cdot \sqrt{\Sigma_{j,j}}}
 $$
 
-Access it via `pop.correlation`. Use `pop.top_correlations(k=20)` to see the strongest feature-feature relationships.
+Access the raw array via `pop.correlation` or the labeled DataFrame via `pop.correlation_df`. Use `pop.top_correlations(k=20)` to see the strongest feature-feature relationships.
 
 ## PCA
 

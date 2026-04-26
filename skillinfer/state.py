@@ -268,6 +268,70 @@ class Profile:
             columns=self.feature_names,
         )
 
+    def summary(self, true_vector: np.ndarray | None = None) -> dict:
+        """Summary statistics for this profile.
+
+        Returns a dict with:
+        - n_features, n_observed, n_predicted: counts
+        - mean_std: average posterior standard deviation
+        - uncertainty_reduction: fraction of prior uncertainty removed (0-1)
+        - top_predicted: top 3 predicted features by mean
+        - most_uncertain: top 3 features by posterior std
+
+        If ``true_vector`` is given, also includes:
+        - mae, rmse, max_error, cosine_similarity: accuracy vs. ground truth
+        - coverage_95: fraction of true values inside 95% confidence intervals
+
+        Parameters
+        ----------
+        true_vector : optional (K,) ground truth for evaluation.
+        """
+        stds = np.sqrt(np.diag(self.Sigma))
+        prior_stds = np.sqrt(np.maximum(self._prior_var, 1e-15))
+        reduction = float(np.mean(np.clip(1.0 - stds / prior_stds, 0.0, 1.0)))
+
+        # Top predicted (unobserved) by mean
+        unobserved_idx = [i for i in range(len(self.mu)) if i not in self._observed]
+        top_pred_idx = sorted(unobserved_idx, key=lambda i: -self.mu[i])[:3]
+        top_predicted = [
+            {"feature": self.feature_names[i], "mean": float(self.mu[i]), "std": float(stds[i])}
+            for i in top_pred_idx
+        ]
+
+        # Most uncertain
+        uncertain_idx = np.argsort(stds)[::-1][:3]
+        most_uncertain = [
+            {"feature": self.feature_names[i], "std": float(stds[i])}
+            for i in uncertain_idx
+        ]
+
+        result = {
+            "n_features": len(self.mu),
+            "n_observed": len(self._observed),
+            "n_predicted": len(self.mu) - len(self._observed),
+            "mean_std": float(stds.mean()),
+            "uncertainty_reduction": reduction,
+            "top_predicted": top_predicted,
+            "most_uncertain": most_uncertain,
+        }
+
+        if true_vector is not None:
+            true_vector = np.asarray(true_vector, dtype=float)
+            errors = np.abs(self.mu - true_vector)
+            result["mae"] = float(errors.mean())
+            result["rmse"] = float(np.sqrt(np.mean(errors ** 2)))
+            result["max_error"] = float(errors.max())
+            result["cosine_similarity"] = self.similarity(true_vector)
+
+            # Coverage: fraction of true values inside 95% CI
+            z = 1.96
+            lo = self.mu - z * stds
+            hi = self.mu + z * stds
+            inside = (true_vector >= lo) & (true_vector <= hi)
+            result["coverage_95"] = float(inside.mean())
+
+        return result
+
     def copy(self) -> Profile:
         """Deep copy of the state."""
         new = Profile(

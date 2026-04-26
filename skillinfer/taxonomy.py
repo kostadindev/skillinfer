@@ -280,6 +280,51 @@ class Population:
             columns=self.feature_names,
         )
 
+    def summary(self) -> dict:
+        """Summary statistics for this population.
+
+        Returns a dict with:
+        - n_entities, n_features: dimensions
+        - shrinkage: Ledoit-Wolf coefficient (None if sample covariance)
+        - condition_number: covariance matrix condition number
+        - effective_dimensions: components needed for 90% variance
+        - mean_correlation: average absolute off-diagonal correlation
+        - sparsity: fraction of off-diagonal |correlations| below 0.1
+        - top_correlations: top 5 feature pairs by |correlation|
+        """
+        N, K = self.matrix.shape
+        pca = pca_embedding(self.matrix.values, min(K, 15))
+        cum = pca["cumulative"]
+        eff_dims = int(next((i + 1 for i, c in enumerate(cum) if c > 0.9), len(cum)))
+
+        # Off-diagonal correlation stats
+        corr = self.correlation
+        mask = ~np.eye(K, dtype=bool)
+        abs_corr = np.abs(corr[mask])
+        mean_abs_corr = float(abs_corr.mean())
+        sparsity = float((abs_corr < 0.1).mean())
+
+        top = self.top_correlations(k=5)
+        top_list = [
+            {
+                "feature_a": row["feature_a"],
+                "feature_b": row["feature_b"],
+                "correlation": float(row["correlation"]),
+            }
+            for _, row in top.iterrows()
+        ]
+
+        return {
+            "n_entities": N,
+            "n_features": K,
+            "shrinkage": self.shrinkage,
+            "condition_number": self.condition_number(),
+            "effective_dimensions": eff_dims,
+            "mean_correlation": mean_abs_corr,
+            "sparsity": sparsity,
+            "top_correlations": top_list,
+        }
+
     def __repr__(self) -> str:
         N, K = self.matrix.shape
         s = f"Population({N} agents x {K} skills"

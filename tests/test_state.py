@@ -187,3 +187,36 @@ def test_repr(taxonomy):
     r = repr(state)
     assert "K=6" in r
     assert "n_obs=0" in r
+
+
+def test_summary_basic(taxonomy):
+    state = taxonomy.profile()
+    state.observe("math", 0.9)
+    state.observe("physics", 0.8)
+    s = state.summary()
+    assert s["n_features"] == 6
+    assert s["n_observed"] == 2
+    assert s["n_predicted"] == 4
+    assert 0.0 < s["mean_std"]
+    assert 0.0 < s["uncertainty_reduction"] <= 1.0
+    assert len(s["top_predicted"]) == 3
+    assert len(s["most_uncertain"]) == 3
+    # No accuracy metrics without true_vector
+    assert "mae" not in s
+
+
+def test_summary_with_ground_truth(taxonomy):
+    state = taxonomy.profile()
+    state.observe("math", 0.9)
+    true_vec = taxonomy.entity(taxonomy.entity_names[0])
+    s = state.summary(true_vector=true_vec)
+    assert "mae" in s
+    assert "rmse" in s
+    assert "max_error" in s
+    assert "cosine_similarity" in s
+    assert "coverage_95" in s
+    assert s["mae"] >= 0
+    assert s["rmse"] >= 0
+    assert s["max_error"] >= s["mae"]
+    assert -1.0 <= s["cosine_similarity"] <= 1.0
+    assert 0.0 <= s["coverage_95"] <= 1.0

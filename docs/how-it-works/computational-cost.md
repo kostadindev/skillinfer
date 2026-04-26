@@ -6,7 +6,7 @@
 
 | Operation | Time | Memory |
 |-----------|------|--------|
-| **Build taxonomy** (`from_dataframe`) | $O(N \cdot K^2)$ | $O(K^2)$ |
+| **Build population** (`from_dataframe`) | $O(N \cdot K^2)$ | $O(K^2)$ |
 | **Single observation** (`observe`) | $O(K^2)$ | $O(K^2)$ |
 | **Batch observation** (`observe_many`) | $O(n \cdot K^2)$ | $O(K^2)$ |
 | **Query mean/std** | $O(K)$ | — |
@@ -15,7 +15,7 @@
 
 Where N = number of entities, K = number of features, n = number of observations.
 
-## Building the taxonomy
+## Building the population
 
 The one-time cost is dominated by covariance estimation:
 
@@ -28,7 +28,7 @@ For typical use cases:
 |---------|---|---|------------|
 | LLM benchmarks | 4,576 | 6 | < 10 ms |
 | O\*NET | 894 | 120 | < 100 ms |
-| Large taxonomy | 10,000 | 500 | < 1 s |
+| Large population | 10,000 | 500 | < 1 s |
 
 ## Per-observation cost
 

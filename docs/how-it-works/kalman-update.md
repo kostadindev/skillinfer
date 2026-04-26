@@ -1,6 +1,6 @@
 # The Kalman Update
 
-The core of `skillinfer` is a single equation: the multivariate Kalman filter update. When you call `state.observe(j, y)`, this is what happens.
+The core of `skillinfer` is a single equation: the multivariate Kalman filter update. When you call `profile.observe(j, y)`, this is what happens.
 
 ## The update equations
 
@@ -25,7 +25,7 @@ $$
 where:
 
 - $K$ is the **Kalman gain** — a K-dimensional vector
-- $\sigma^2_{\text{noise}}$ is the observation noise variance (`obs_noise ** 2`)
+- $\sigma^2_{\text{noise}}$ is the observation noise variance (`noise ** 2`)
 - $\Sigma_{:,j}$ is the $j$-th column of the covariance matrix
 
 ## What each part does

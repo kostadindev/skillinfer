@@ -140,3 +140,20 @@ def test_sample_covariance(sample_df):
     tax = Population.from_dataframe(sample_df, covariance="sample")
     assert tax.shrinkage is None
     assert tax.covariance.shape == (4, 4)
+
+
+def test_summary(sample_df):
+    tax = Population.from_dataframe(sample_df)
+    s = tax.summary()
+    assert s["n_entities"] == 5
+    assert s["n_features"] == 4
+    assert s["shrinkage"] is not None
+    assert s["condition_number"] > 0
+    assert 1 <= s["effective_dimensions"] <= 4
+    assert 0.0 <= s["mean_correlation"] <= 1.0
+    assert 0.0 <= s["sparsity"] <= 1.0
+    assert len(s["top_correlations"]) <= 5
+    for pair in s["top_correlations"]:
+        assert "feature_a" in pair
+        assert "feature_b" in pair
+        assert -1.0 <= pair["correlation"] <= 1.0
