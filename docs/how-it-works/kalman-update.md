@@ -1,0 +1,123 @@
+# The Kalman Update
+
+The core of `skillinfer` is a single equation: the multivariate Kalman filter update. When you call `state.observe(j, y)`, this is what happens.
+
+## The update equations
+
+Given the current posterior belief (mean $\mu$, covariance $\Sigma$), observing feature $j$ with value $y$:
+
+$$
+\text{innovation} = y - \mu_j
+$$
+
+$$
+K = \frac{\Sigma_{:,j}}{\Sigma_{j,j} + \sigma^2_{\text{noise}}}
+$$
+
+$$
+\mu \leftarrow \mu + K \cdot \text{innovation}
+$$
+
+$$
+\Sigma \leftarrow \Sigma - K \cdot \Sigma_{j,:}^T
+$$
+
+where:
+
+- $K$ is the **Kalman gain** — a K-dimensional vector
+- $\sigma^2_{\text{noise}}$ is the observation noise variance (`obs_noise ** 2`)
+- $\Sigma_{:,j}$ is the $j$-th column of the covariance matrix
+
+## What each part does
+
+### Innovation
+
+The difference between what we observed ($y$) and what we expected ($\mu_j$). If the observation matches our prediction, nothing changes.
+
+### Kalman gain
+
+$K_i = \frac{\Sigma_{i,j}}{\Sigma_{j,j} + \sigma^2_{\text{noise}}}$
+
+The gain for feature $i$ is proportional to $\Sigma_{i,j}$ — how much feature $i$ co-varies with the observed feature $j$:
+
+- If $\Sigma_{i,j} > 0$: feature $i$ moves in the **same direction** as the innovation
+- If $\Sigma_{i,j} < 0$: feature $i$ moves in the **opposite direction**
+- If $\Sigma_{i,j} \approx 0$: feature $i$ is **unaffected**
+
+The denominator $\Sigma_{j,j} + \sigma^2_{\text{noise}}$ normalizes by the total variance (prior uncertainty + measurement noise).
+
+### Mean update
+
+Each feature's mean shifts by $K_i \times \text{innovation}$. This is **covariance transfer** — the observed feature's value propagates to every other feature through the off-diagonal covariance.
+
+### Covariance update
+
+The rank-1 update $\Sigma \leftarrow \Sigma - K \cdot \Sigma_{j,:}^T$ **shrinks** the covariance. After an observation:
+
+- The observed feature's variance drops (we know more about it)
+- Correlated features' variances also drop (we learned about them indirectly)
+- The covariance between features decreases (less uncertainty = less room for co-variation)
+
+## In code
+
+The implementation in `skillinfer/_kalman.py`:
+
+```python
+def kalman_update(mu, Sigma, j, y_j, obs_noise):
+    mu = mu.copy()
+    Sigma = Sigma.copy()
+
+    S_j = Sigma[:, j]
+    K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
+    mu += K_gain * (y_j - mu[j])
+    Sigma -= np.outer(K_gain, S_j)
+
+    # Numerical stability: enforce symmetry and positive diagonal
+    Sigma = (Sigma + Sigma.T) * 0.5
+    np.maximum(np.diag(Sigma), 1e-10, out=Sigma[np.diag_indices_from(Sigma)])
+
+    return mu, Sigma
+```
+
+The symmetry enforcement and positive diagonal clamping prevent floating-point drift from breaking the covariance structure over many updates.
+
+## Why this is exact
+
+The Kalman update is the **exact Bayesian posterior** when:
+
+1. The prior is Gaussian: $p(\mathbf{x}) = \mathcal{N}(\mu, \Sigma)$
+2. The observation is a linear function of the state with Gaussian noise: $y_j = x_j + \epsilon$, where $\epsilon \sim \mathcal{N}(0, \sigma^2_{\text{noise}})$
+
+Under these conditions, the posterior is also Gaussian, and the Kalman update computes its exact mean and covariance. No approximations, no sampling, no variational bounds.
+
+## Batch updates
+
+When observing multiple features, `skillinfer` applies the updates **sequentially** — each observation conditions on the updated posterior from the previous one:
+
+```python
+def kalman_update_batch(mu, Sigma, obs_indices, obs_values, obs_noise):
+    mu = mu.copy()
+    Sigma = Sigma.copy()
+    for j, y_j in zip(obs_indices, obs_values):
+        S_j = Sigma[:, j]
+        K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
+        mu += K_gain * (y_j - mu[j])
+        Sigma -= np.outer(K_gain, S_j)
+    return mu, Sigma
+```
+
+Sequential application is equivalent to the joint multivariate update (observing all features simultaneously) — this is a property of the Kalman filter.
+
+## The diagonal baseline
+
+For comparison, the diagonal update only updates the observed feature:
+
+```python
+def diagonal_update(mu, var, j, y_j, obs_noise):
+    gain = var[j] / (var[j] + obs_noise ** 2)
+    mu[j] += gain * (y_j - mu[j])
+    var[j] *= (1 - gain)
+    return mu, var
+```
+
+This is what you get when you ignore off-diagonal covariance — no information transfers between features. The difference between Kalman and diagonal performance measures how much value the covariance structure adds.
