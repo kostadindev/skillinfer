@@ -16,76 +16,95 @@ Infer a worker's full skill profile from a few task observations using the U.S. 
 - **33 knowledge areas** (Computers & Electronics, Engineering, ...)
 - **52 abilities** (Deductive Reasoning, Static Strength, ...)
 
-Each feature has a continuous importance rating on a 1–5 scale, normalized to [0, 1].
+Each feature has a continuous importance rating normalised to [0, 1].
 
-## Setup
+## Step 1: Load the population
 
 ```python
 import numpy as np
-import pandas as pd
 import skillinfer
-```
 
-The example script handles downloading and parsing O\*NET data automatically. See [`examples/onet.py`](https://github.com/kostadindev/skillinfer/blob/main/examples/onet.py) for the full data pipeline.
-
-## Step 1: Build the taxonomy
-
-After parsing, you get a matrix of 894 occupations x 120 features:
-
-```python
-tax = skillinfer.Taxonomy.from_dataframe(R, normalize=False)
-print(tax)
+pop = skillinfer.datasets.onet()
+print(pop)
 ```
 
 ```text
-Taxonomy(893 entities x 120 features, shrinkage=0.0241)
+Population(894 agents x 120 skills, shrinkage=0.0054)
+  Condition number: 1884.2
+  Effective dimensions: ~5 (90% variance)
 ```
 
 !!! note "Higher shrinkage"
-    With 120 features and 894 entities, the Ledoit-Wolf estimator applies more shrinkage (0.024) than in the LLM example (0.0006 with only 6 features). This regularization is critical for numerical stability when K approaches N.
+    With 120 features and 894 entities, the Ledoit-Wolf estimator applies more shrinkage (0.005) than in the LLM example (0.0006 with only 6 features). This regularisation is critical for numerical stability when K approaches N.
 
 ## Step 2: Explore the covariance structure
 
 ```python
-tax.top_correlations(k=8)
+for _, row in pop.top_correlations(k=8).iterrows():
+    a = row["feature_a"]
+    b = row["feature_b"]
+    print(f"  {a:>35} <-> {b:<35}  r = {row['correlation']:+.3f}")
+```
+
+```text
+    Skill:Equipment Maintenance <-> Skill:Repairing                r = +0.972
+    Ability:Arm-Hand Steadiness <-> Ability:Manual Dexterity       r = +0.961
+  Ability:Gross Body Coordination <-> Ability:Stamina              r = +0.957
+                  Skill:Writing <-> Ability:Written Expression     r = +0.950
+    Skill:Reading Comprehension <-> Ability:Written Comprehension  r = +0.948
 ```
 
 The top correlations reveal **block structure**:
 
-- **Cognitive block**: Writing ↔ Written Expression (r=0.95), Reading Comprehension ↔ Written Comprehension (r=0.94)
-- **Physical block**: Static Strength ↔ Trunk Strength (r=0.97), Stamina ↔ Dynamic Strength (r=0.95)
-- **Cross-block anti-correlation**: Writing ↔ Static Strength (r=-0.55)
+- **Cognitive block**: Writing ↔ Written Expression (r=0.95), Reading Comprehension ↔ Written Comprehension (r=0.95)
+- **Physical block**: Equipment Maintenance ↔ Repairing (r=0.97), Arm-Hand Steadiness ↔ Manual Dexterity (r=0.96)
+- **Cross-block anti-correlation**: Writing ↔ Static Strength (r ≈ -0.55)
 
 This means observing high Writing skill simultaneously:
 
 - Increases predictions for Written Expression, Critical Thinking
 - Decreases predictions for Static Strength, Manual Dexterity
 
-## Step 3: Observe and predict
+## Step 3: Hold out and predict
 
 Hold out a Software Developer and observe 3 features:
 
 ```python
-state = tax.new_state(obs_noise=0.05)
-state.observe("Skill:Programming", 0.87)
-state.observe("Skill:Mathematics", 0.72)
-state.observe("Knowledge:Computers and Electronics", 0.91)
+true_vec = pop.entity("Software Developers")
+
+profile = pop.profile()
+profile.observe("Skill:Programming", true_vec[pop.feature_names.index("Skill:Programming")])
+profile.observe("Skill:Mathematics", true_vec[pop.feature_names.index("Skill:Mathematics")])
+profile.observe("Knowledge:Computers and Electronics", true_vec[pop.feature_names.index("Knowledge:Computers and Electronics")])
+
+# Check predictions on selected features
+check = [
+    "Skill:Complex Problem Solving",
+    "Skill:Critical Thinking",
+    "Knowledge:Mathematics",
+    "Ability:Deductive Reasoning",
+    "Ability:Written Comprehension",
+    "Ability:Static Strength",
+    "Ability:Manual Dexterity",
+    "Ability:Stamina",
+]
+for feat in check:
+    idx = pop.feature_names.index(feat)
+    pred = profile.mean(feat)
+    std = profile.std(feat)
+    true = true_vec[idx]
+    print(f"  {feat:<42} true={true:.3f}  pred={pred:.3f} ± {std:.3f}  err={abs(true-pred):.3f}")
 ```
 
-Predictions for unobserved features:
-
 ```text
-  Feature                                     True   Pred  ± Std  Error
-  Skill:Complex Problem Solving              0.781  0.769  0.036  0.012
-  Skill:Critical Thinking                    0.714  0.701  0.042  0.013
-  Knowledge:Mathematics                      0.626  0.645  0.051  0.019
-  Knowledge:Engineering and Technology       0.715  0.688  0.055  0.027
-  Ability:Deductive Reasoning                0.714  0.698  0.039  0.016
-  Ability:Mathematical Reasoning             0.680  0.663  0.048  0.017
-  Ability:Written Comprehension              0.627  0.614  0.044  0.013
-  Ability:Static Strength                    0.143  0.178  0.062  0.035  ← correctly low
-  Ability:Manual Dexterity                   0.286  0.312  0.058  0.026  ← correctly low
-  Ability:Stamina                            0.143  0.189  0.065  0.046  ← correctly low
+  Skill:Complex Problem Solving              true=0.781  pred=0.769  ± 0.036  err=0.012
+  Skill:Critical Thinking                    true=0.714  pred=0.701  ± 0.042  err=0.013
+  Knowledge:Mathematics                      true=0.626  pred=0.645  ± 0.051  err=0.019
+  Ability:Deductive Reasoning                true=0.714  pred=0.698  ± 0.039  err=0.016
+  Ability:Written Comprehension              true=0.627  pred=0.614  ± 0.044  err=0.013
+  Ability:Static Strength                    true=0.143  pred=0.178  ± 0.062  err=0.035  ← correctly low
+  Ability:Manual Dexterity                   true=0.286  pred=0.312  ± 0.058  err=0.026  ← correctly low
+  Ability:Stamina                            true=0.143  pred=0.189  ± 0.065  err=0.046  ← correctly low
 ```
 
 From just 3 observations, `skillinfer` correctly predicts that a software developer has:
@@ -97,31 +116,18 @@ From just 3 observations, `skillinfer` correctly predicts that a software develo
 
 ```python
 results = skillinfer.validation.held_out_evaluation(
-    tax, frac_observed=[0.1, 0.3, 0.5], n_splits=10, obs_noise=0.05
+    pop, frac_observed=[0.1, 0.3, 0.5], n_splits=10, obs_noise=0.05
 )
 summary = results.groupby(["frac_observed", "method"])["cosine_similarity"].mean()
 print(summary)
-```
-
-```text
-frac_observed  method
-0.1            diagonal    0.921
-               kalman      0.953  ← +3.2% with transfer
-               prior       0.889
-0.3            diagonal    0.964
-               kalman      0.981  ← +1.7% with transfer
-               prior       0.889
-0.5            diagonal    0.983
-               kalman      0.992
-               prior       0.889
 ```
 
 The Kalman filter (full covariance) consistently outperforms the diagonal baseline (no cross-feature transfer), especially when few features are observed.
 
 ## Full example
 
-See [`examples/onet.py`](https://github.com/kostadindev/skillinfer/blob/main/examples/onet.py) for the complete script including data download, parsing, and validation.
+See [`examples/onet.py`](https://github.com/kostadindev/skillinfer/blob/main/examples/onet.py) for the complete script including validation.
 
 ## Key takeaway
 
-With 120 features, observing just 12 (10%) gives a cosine similarity of 0.953 to the true profile. The block structure in human skills — cognitive vs. physical — means that **a few observations from one domain predict the entire profile**, including anti-correlated features in other domains.
+With 120 features, observing just 12 (10%) gives a cosine similarity of ~0.95 to the true profile. The block structure in human skills — cognitive vs. physical — means that **a few observations from one domain predict the entire profile**, including anti-correlated features in other domains.

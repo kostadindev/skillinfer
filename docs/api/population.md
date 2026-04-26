@@ -1,20 +1,20 @@
-# Taxonomy
+# Population
 
-::: skillinfer.taxonomy.Taxonomy
+::: skillinfer.taxonomy.Population
 
 The population model. Wraps an entity-feature matrix and its learned covariance structure.
 
 ```python
 import skillinfer
 
-tax = skillinfer.Taxonomy.from_dataframe(df)
+pop = skillinfer.Population.from_dataframe(df)
 ```
 
 ---
 
 ## Constructors
 
-### `Taxonomy.from_dataframe`
+### `Population.from_dataframe`
 
 ```python
 @classmethod
@@ -23,10 +23,10 @@ def from_dataframe(
     df: pd.DataFrame,
     normalize: bool = True,
     covariance: str = "ledoit-wolf",
-) -> Taxonomy
+) -> Population
 ```
 
-Build a Taxonomy from a pandas DataFrame.
+Build a Population from a pandas DataFrame.
 
 **Parameters**
 
@@ -45,7 +45,7 @@ Build a Taxonomy from a pandas DataFrame.
 
 **Returns**
 
-A `Taxonomy` instance with the learned covariance structure.
+A `Population` instance with the learned covariance structure.
 
 **Example**
 
@@ -54,14 +54,14 @@ import pandas as pd
 import skillinfer
 
 df = pd.read_csv("scores.csv", index_col=0)
-tax = skillinfer.Taxonomy.from_dataframe(df, normalize=False)
-print(tax)
-# Taxonomy(4576 entities x 6 features, shrinkage=0.0006)
+pop = skillinfer.Population.from_dataframe(df, normalize=False)
+print(pop)
+# Population(4576 entities x 6 features, shrinkage=0.0006)
 ```
 
 ---
 
-### `Taxonomy.from_csv`
+### `Population.from_csv`
 
 ```python
 @classmethod
@@ -71,10 +71,10 @@ def from_csv(
     index_col: int | str = 0,
     normalize: bool = True,
     covariance: str = "ledoit-wolf",
-) -> Taxonomy
+) -> Population
 ```
 
-Build a Taxonomy from a CSV file. Convenience wrapper around `from_dataframe`.
+Build a Population from a CSV file. Convenience wrapper around `from_dataframe`.
 
 **Parameters**
 
@@ -122,7 +122,7 @@ Get the raw feature vector for a named entity. Returns a **copy** as a plain num
 **Example**
 
 ```python
-vec = tax.entity("meta-llama/Llama-3-70B")
+vec = pop.entity("meta-llama/Llama-3-70B")
 print(vec)  # array([69.15, 63.79, 27.49, 14.09, 17.72, 42.68])
 ```
 
@@ -152,7 +152,7 @@ Get a named agent's skill vector as a labeled Series. Like `entity()`, but retur
 **Example**
 
 ```python
-sv = tax.skill_vector("meta-llama/Llama-3-70B")
+sv = pop.skill_vector("meta-llama/Llama-3-70B")
 print(sv)
 # IFEval        69.15
 # BBH           63.79
@@ -169,18 +169,53 @@ sv["MMLU-PRO"] # 42.68
 
 ---
 
-### `new_state`
+### `describe_skills`
 
 ```python
-def new_state(
+def describe_skills(self, descriptions: dict[str, str] | list[Skill]) -> None
+```
+
+Attach descriptions to skill dimensions. Descriptions flow through to Profiles, appearing in `predict()` and `to_dataframe()` output.
+
+**Parameters**
+
+<div class="param-list" markdown>
+
+`descriptions`
+:   Dict mapping skill names to descriptions, or a list of `Skill` objects.
+
+</div>
+
+**Example**
+
+```python
+from skillinfer import Skill
+
+# Dict form
+pop.describe_skills({
+    "BBH": "Big-Bench Hard: diverse challenging tasks",
+    "MMLU-PRO": "Professional-level multitask understanding",
+})
+
+# Skill objects
+pop.describe_skills([
+    Skill("BBH", "Big-Bench Hard: diverse challenging tasks"),
+])
+```
+
+---
+
+### `profile`
+
+```python
+def profile(
     self,
     prior_entity: str | None = None,
     prior_mean: np.ndarray | None = None,
-    obs_noise: float = 0.05,
-) -> InferenceState
+) -> Profile
 ```
 
-Create an [`InferenceState`](inference-state.md) for a new entity.
+Create a [`Profile`](profile.md) for a new entity. Inherits skill descriptions from the Population.
 
 **Parameters**
 
@@ -192,28 +227,25 @@ Create an [`InferenceState`](inference-state.md) for a new entity.
 `prior_mean`
 :   If given, use this array directly as the prior mean.
 
-`obs_noise`
-:   Observation noise standard deviation. Controls the trust balance between observations and the prior.
-
 </div>
 
 If neither `prior_entity` nor `prior_mean` is given, the population mean is used.
 
 **Returns**
 
-An `InferenceState` initialized with the chosen prior mean and the population covariance.
+A `Profile` initialized with the chosen prior mean and the population covariance.
 
 **Example**
 
 ```python
 # Default: population mean prior
-state = tax.new_state(obs_noise=1.0)
+profile = pop.profile()
 
-# Entity-specific prior
-state = tax.new_state(prior_entity="meta-llama/Llama-3-70B", obs_noise=1.0)
+# Entity-specific prior ("this new model is based on Llama-3")
+profile = pop.profile(prior_entity="meta-llama/Llama-3-70B")
 
 # Custom prior
-state = tax.new_state(prior_mean=np.zeros(6), obs_noise=0.5)
+profile = pop.profile(prior_mean=np.zeros(6))
 ```
 
 ---
@@ -237,7 +269,7 @@ Dict with keys:
 **Example**
 
 ```python
-pca = tax.pca(n_components=3)
+pca = pop.pca(n_components=3)
 print(f"3 components explain {pca['cumulative'][-1]:.1%} of variance")
 ```
 
@@ -258,7 +290,7 @@ DataFrame with columns `[feature_a, feature_b, correlation]`, sorted by `|correl
 **Example**
 
 ```python
-tax.top_correlations(k=5)
+pop.top_correlations(k=5)
 #       feature_a     feature_b  correlation
 # 0          GPQA      MMLU-PRO        0.879
 # 1           BBH      MMLU-PRO        0.871
@@ -291,7 +323,7 @@ The population covariance matrix as a labeled DataFrame (skill names on both axe
 **Example**
 
 ```python
-tax.covariance_df
+pop.covariance_df
 #              Math   Physics  Chemistry  English  History      Art
 # Math       157.25   116.22    113.00   -28.32   -17.81    15.05
 # Physics    116.22   164.92    102.45   -29.93   -19.49    17.73
@@ -315,7 +347,7 @@ The Pearson correlation matrix as a labeled DataFrame.
 **Example**
 
 ```python
-tax.correlation_df.round(2)
+pop.correlation_df.round(2)
 #            Math  Physics  Chemistry  English  History   Art
 # Math       1.00     0.72       0.70    -0.24    -0.15  0.08
 # Physics    0.72     1.00       0.62    -0.25    -0.17  0.09
@@ -329,11 +361,11 @@ tax.correlation_df.round(2)
 
 ## Pretty printing
 
-`print(tax)` gives a summary with condition number, effective dimensionality, and top correlations:
+`print(pop)` gives a summary with condition number, effective dimensionality, and top correlations:
 
 ```python
-print(tax)
-# Taxonomy(200 agents x 6 skills, shrinkage=0.0442)
+print(pop)
+# Population(200 agents x 6 skills, shrinkage=0.0442)
 #   Condition number: 9.8
 #   Effective dimensions: ~5 (90% variance)
 #
@@ -353,6 +385,7 @@ print(tax)
 |-----------|------|-------------|
 | `matrix` | `pd.DataFrame` | (N, K) raw data |
 | `feature_names` | `list[str]` | Skill names |
+| `skills` | `list[Skill]` | Skill objects with descriptions |
 | `entity_names` | `list[str]` | Agent names |
 | `covariance` | `np.ndarray` | (K, K) covariance matrix (raw array) |
 | `correlation` | `np.ndarray` | (K, K) Pearson correlation matrix (raw array) |

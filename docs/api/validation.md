@@ -33,7 +33,7 @@ The difference between `kalman` and `diagonal` measures **how much value the cov
 <div class="param-list" markdown>
 
 `taxonomy`
-:   A [`Taxonomy`](taxonomy.md) instance.
+:   A [`Population`](taxonomy.md) instance.
 
 `frac_observed`
 :   Fraction of features to observe for each held-out entity. Can be a single float or a list of floats to compare multiple observation budgets.
@@ -68,7 +68,7 @@ DataFrame with columns:
 import skillinfer
 
 results = skillinfer.validation.held_out_evaluation(
-    tax,
+    pop,
     frac_observed=[0.1, 0.2, 0.3, 0.5],
     n_splits=10,
     obs_noise=0.02,

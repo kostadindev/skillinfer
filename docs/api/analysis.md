@@ -30,7 +30,7 @@ Clustered correlation heatmap of features.
 <div class="param-list" markdown>
 
 `taxonomy`
-:   A [`Taxonomy`](taxonomy.md) instance.
+:   A [`Population`](taxonomy.md) instance.
 
 `cluster`
 :   If `True` (default), reorder features by hierarchical clustering (Ward's method). Set to `False` to preserve the original feature order.
@@ -52,7 +52,7 @@ Matplotlib `Figure`.
 ```python
 import skillinfer
 
-fig = skillinfer.analysis.correlation_heatmap(tax)
+fig = skillinfer.analysis.correlation_heatmap(pop)
 fig.savefig("correlation.png", dpi=150)
 ```
 
@@ -77,7 +77,7 @@ PCA variance explained: individual bars + cumulative line.
 <div class="param-list" markdown>
 
 `taxonomy`
-:   A [`Taxonomy`](taxonomy.md) instance.
+:   A [`Population`](taxonomy.md) instance.
 
 `max_components`
 :   Maximum number of principal components to show.
@@ -94,7 +94,7 @@ Matplotlib `Figure`.
 **Example**
 
 ```python
-fig = skillinfer.analysis.scree_plot(tax, max_components=10)
+fig = skillinfer.analysis.scree_plot(pop, max_components=10)
 fig.savefig("scree.png", dpi=150)
 ```
 
@@ -120,10 +120,10 @@ Horizontal bar chart of posterior mean with error bars, optionally overlaying a 
 <div class="param-list" markdown>
 
 `state`
-:   An [`InferenceState`](inference-state.md) instance.
+:   An [`Profile`](profile.md) instance.
 
 `reference`
-:   (K,) reference vector for comparison (e.g., `tax.population_mean` or `tax.entity("some_entity")`). Shown as red scatter points.
+:   (K,) reference vector for comparison (e.g., `pop.population_mean` or `pop.entity("some_entity")`). Shown as red scatter points.
 
 `top_k`
 :   Number of features to show, sorted by posterior mean.
@@ -142,7 +142,7 @@ Matplotlib `Figure`.
 ```python
 fig = skillinfer.analysis.posterior_profile(
     state,
-    reference=tax.population_mean,
+    reference=pop.population_mean,
     top_k=15,
 )
 fig.savefig("profile.png", dpi=150)
@@ -161,7 +161,7 @@ import matplotlib.pyplot as plt
 
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-skillinfer.analysis.scree_plot(tax, ax=axes[0])
+skillinfer.analysis.scree_plot(pop, ax=axes[0])
 skillinfer.analysis.posterior_profile(state, ax=axes[1])
 
 fig.tight_layout()

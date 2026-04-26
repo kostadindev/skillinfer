@@ -92,14 +92,15 @@ nav:
   - Tutorials:
     - LLM Benchmarks: tutorials/llm-benchmarks.md
     - Human Skills (O*NET): tutorials/human-skills.md
-    - Student Assessment: tutorials/student-assessment.md
     - European Skills (ESCO): tutorials/european-skills.md
+    - Agent Orchestration: tutorials/orchestration.md
   - How It Works:
     - The Kalman Update: how-it-works/kalman-update.md
     - Covariance Estimation: how-it-works/covariance-estimation.md
     - Computational Cost: how-it-works/computational-cost.md
   - API Reference:
-    - Taxonomy: api/taxonomy.md
-    - InferenceState: api/inference-state.md
+    - Population: api/population.md
+    - Profile: api/profile.md
+    - datasets: api/datasets.md
     - analysis: api/analysis.md
     - validation: api/validation.md

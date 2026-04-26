@@ -49,14 +49,14 @@ The automatically chosen $\alpha$ depends on the ratio of features to entities:
 | O\*NET | 120 / 894 | 0.024 | Moderate shrinkage |
 | Small dataset | 50 / 100 | 0.15+ | Heavy shrinkage |
 
-You can check the shrinkage coefficient via `tax.shrinkage`.
+You can check the shrinkage coefficient via `pop.shrinkage`.
 
 ## Sample covariance (alternative)
 
 For cases where you want the unregularized estimate:
 
 ```python
-tax = skillinfer.Taxonomy.from_dataframe(df, covariance="sample")
+pop = skillinfer.Population.from_dataframe(df, covariance="sample")
 ```
 
 This adds a small ridge ($10^{-6} \cdot I$) for numerical stability, but does not apply Ledoit-Wolf shrinkage. Use this only when $N \gg K$ and you're confident the sample covariance is well-conditioned.
@@ -66,7 +66,7 @@ This adds a small ridge ($10^{-6} \cdot I$) for numerical stability, but does no
 The condition number measures how numerically stable the covariance matrix is:
 
 ```python
-tax.condition_number()  # lower = more stable
+pop.condition_number()  # lower = more stable
 ```
 
 $$
@@ -85,14 +85,14 @@ $$
 \text{Corr}_{i,j} = \frac{\Sigma_{i,j}}{\sqrt{\Sigma_{i,i}} \cdot \sqrt{\Sigma_{j,j}}}
 $$
 
-Access it via `tax.correlation`. Use `tax.top_correlations(k=20)` to see the strongest feature-feature relationships.
+Access it via `pop.correlation`. Use `pop.top_correlations(k=20)` to see the strongest feature-feature relationships.
 
 ## PCA
 
 PCA reveals the effective dimensionality of the feature space:
 
 ```python
-pca = tax.pca(n_components=10)
+pca = pop.pca(n_components=10)
 print(pca["cumulative"])  # [0.71, 0.82, 0.89, ...]
 ```
 
