@@ -36,7 +36,7 @@ def onet(normalize: bool = False) -> "Population":
     >>> profile.observe("Skill:Programming", 0.92)
     >>> print(profile.predict())
     """
-    from skillinfer.taxonomy import Population
+    from skillinfer.population import Population
 
     df = pd.read_parquet(_PARQUET)
     return Population.from_dataframe(df, normalize=normalize)

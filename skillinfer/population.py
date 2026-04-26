@@ -179,6 +179,24 @@ class Population:
         df = pd.read_csv(path, index_col=index_col)
         return cls.from_dataframe(df, normalize=normalize, covariance=covariance)
 
+    @classmethod
+    def from_parquet(
+        cls,
+        path: str,
+        normalize: bool = True,
+        covariance: str = "ledoit-wolf",
+    ) -> Population:
+        """Construct from a Parquet file.
+
+        Parameters
+        ----------
+        path : path to the Parquet file.
+        normalize : if True, scale each column to [0, 1].
+        covariance : "ledoit-wolf" or "sample".
+        """
+        df = pd.read_parquet(path)
+        return cls.from_dataframe(df, normalize=normalize, covariance=covariance)
+
     def entity(self, name: str) -> np.ndarray:
         """Get the feature vector for a named entity."""
         return self.matrix.loc[name].values.copy()
@@ -279,6 +297,28 @@ class Population:
             index=self.feature_names,
             columns=self.feature_names,
         )
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """The entity-feature matrix as a DataFrame (copy)."""
+        return self.matrix.copy()
+
+    def to_csv(self, path: str) -> None:
+        """Export the entity-feature matrix to CSV.
+
+        Parameters
+        ----------
+        path : file path to write.
+        """
+        self.matrix.to_csv(path)
+
+    def to_parquet(self, path: str) -> None:
+        """Export the entity-feature matrix to Parquet.
+
+        Parameters
+        ----------
+        path : file path to write.
+        """
+        self.matrix.to_parquet(path)
 
     def summary(self) -> dict:
         """Summary statistics for this population.

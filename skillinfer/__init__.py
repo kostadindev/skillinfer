@@ -22,14 +22,14 @@ Classes:
     Profile    — Skill profile for one entity (gets sharper with observations)
 
 Modules:
-    analysis   — Visualization (correlation heatmap, scree plot, etc.)
+    visualization — Plotting (correlation heatmap, scree plot, etc.)
     validation — Held-out evaluation (does transfer help?)
 """
 
 from skillinfer.types import Skill, Task
-from skillinfer.taxonomy import Population
+from skillinfer.population import Population
 from skillinfer.state import Profile, MatchResult
-from skillinfer import analysis
+from skillinfer import visualization
 from skillinfer import datasets
 from skillinfer import validation
 
@@ -81,6 +81,6 @@ __all__ = [
     "Profile",
     "MatchResult",
     "rank_agents",
-    "analysis",
+    "visualization",
     "validation",
 ]

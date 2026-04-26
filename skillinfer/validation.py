@@ -73,7 +73,7 @@ def _mean_log_likelihood(
 
 
 def held_out_evaluation(
-    taxonomy,
+    pop,
     frac_observed: float | list[float] = 0.3,
     n_splits: int = 10,
     obs_noise: float = 0.02,
@@ -89,7 +89,7 @@ def held_out_evaluation(
 
     Parameters
     ----------
-    taxonomy : Population instance.
+    pop : Population instance.
     frac_observed : fraction(s) of features to observe (scalar or list).
     n_splits : number of random train/test splits.
     obs_noise : observation noise standard deviation.
@@ -109,11 +109,11 @@ def held_out_evaluation(
     if isinstance(frac_observed, (int, float)):
         frac_observed = [frac_observed]
 
-    R = taxonomy.matrix.values
+    R = pop.matrix.values
     N, K = R.shape
-    Sigma = taxonomy.covariance
-    pop_mean = taxonomy.population_mean
-    entity_names = taxonomy.entity_names
+    Sigma = pop.covariance
+    pop_mean = pop.population_mean
+    entity_names = pop.entity_names
 
     rng = np.random.default_rng(seed)
     rows = []
@@ -209,7 +209,7 @@ def uncertainty_shrinkage(state_or_Sigma, Sigma_0: np.ndarray) -> float:
         The current posterior covariance. If an Profile, its
         .Sigma attribute is used.
     Sigma_0 : (K, K) ndarray.
-        The prior covariance (e.g., taxonomy.covariance).
+        The prior covariance (e.g., pop.covariance).
 
     Returns
     -------

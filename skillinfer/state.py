@@ -55,6 +55,48 @@ class Profile:
         self._name_to_idx = {name: i for i, name in enumerate(feature_names)}
         self._skills: dict[str, Skill] = {}
 
+    @classmethod
+    def from_dict(cls, data: dict) -> Profile:
+        """Reconstruct a Profile from the output of ``to_dict()``.
+
+        Note: this restores the mean vector and metadata but not the
+        full posterior covariance. The covariance is set to a diagonal
+        matrix using the exported std values. For full covariance
+        round-tripping, re-create the profile from a Population.
+
+        Parameters
+        ----------
+        data : dict as returned by ``to_dict()``.
+        """
+        mu = np.array(data["mean"], dtype=float)
+        stds = np.array(data["std"], dtype=float)
+        Sigma = np.diag(stds ** 2)
+        feature_names = list(data["feature_names"])
+        noise = data.get("noise", 1e-6)
+        profile = cls(mu=mu, Sigma=Sigma, feature_names=feature_names, noise=noise)
+        profile.n_observations = data.get("n_observations", 0)
+        name_to_idx = {n: i for i, n in enumerate(feature_names)}
+        for feat in data.get("observed_features", []):
+            if feat in name_to_idx:
+                profile._observed.add(name_to_idx[feat])
+        return profile
+
+    @classmethod
+    def from_json(cls, source: str) -> Profile:
+        """Reconstruct a Profile from a JSON string or file path.
+
+        Parameters
+        ----------
+        source : JSON string, or a path to a JSON file.
+        """
+        import json
+        try:
+            data = json.loads(source)
+        except json.JSONDecodeError:
+            with open(source) as f:
+                data = json.load(f)
+        return cls.from_dict(data)
+
     def _resolve_index(self, feature: str | int | Skill) -> int:
         if isinstance(feature, Skill):
             feature = feature.name
@@ -181,6 +223,42 @@ class Profile:
         """
         return self._build_dataframe(include_ci=False, detail=detail)
 
+    def to_dict(self) -> dict:
+        """Export the profile as a plain dict (JSON-serialisable).
+
+        Returns
+        -------
+        dict with keys: feature_names, mean, std, n_observations,
+            observed_features, noise.
+        """
+        stds = np.sqrt(np.diag(self.Sigma)).tolist()
+        return {
+            "feature_names": list(self.feature_names),
+            "mean": self.mu.tolist(),
+            "std": stds,
+            "n_observations": self.n_observations,
+            "observed_features": [self.feature_names[i] for i in sorted(self._observed)],
+            "noise": self.noise,
+        }
+
+    def to_json(self, path: str | None = None) -> str:
+        """Export the profile as JSON.
+
+        Parameters
+        ----------
+        path : if given, write to this file. Otherwise return the JSON string.
+
+        Returns
+        -------
+        JSON string.
+        """
+        import json
+        s = json.dumps(self.to_dict(), indent=2)
+        if path is not None:
+            with open(path, "w") as f:
+                f.write(s)
+        return s
+
     def similarity(self, other: np.ndarray) -> float:
         """Cosine similarity between posterior mean and a target vector."""
         other = np.asarray(other, dtype=float)
@@ -199,7 +277,7 @@ class Profile:
 
         Parameters
         ----------
-        Sigma_0 : (K, K) ndarray, typically taxonomy.covariance.
+        Sigma_0 : (K, K) ndarray, typically pop.covariance.
         """
         tr_0 = np.trace(Sigma_0)
         if tr_0 < 1e-15:

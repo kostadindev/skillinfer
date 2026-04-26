@@ -101,6 +101,5 @@ nav:
   - API Reference:
     - Population: api/population.md
     - Profile: api/profile.md
-    - datasets: api/datasets.md
-    - analysis: api/analysis.md
-    - validation: api/validation.md
+    - Datasets: api/datasets.md
+    - Visualization: api/visualization.md
