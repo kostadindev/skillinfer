@@ -2,7 +2,7 @@
 End-to-end example: Predict LLM benchmark performance from one observation.
 
 1. Download the Open LLM Leaderboard v2 results (4,500+ models, 6 benchmarks)
-2. Build a Taxonomy (covariance structure across benchmarks)
+2. Build a Population (covariance structure across benchmarks)
 3. A "new model" enters — observe it on 1 benchmark
 4. Predict its performance on all other benchmarks
 5. Compare predictions to ground truth
@@ -38,17 +38,17 @@ features = list(df.columns)
 
 # Build taxonomy from everyone EXCEPT the target (no data leakage)
 print(f"\nHolding out: {model_name}")
-tax = skillinfer.Taxonomy.from_dataframe(df.drop(model_name), normalize=False)
-print(f"  {tax}")
-print(f"  Condition number: {tax.condition_number():.1f}")
+pop = skillinfer.Population.from_dataframe(df.drop(model_name), normalize=False)
+print(f"  {pop}")
+print(f"  Condition number: {pop.condition_number():.1f}")
 
 # Covariance structure
-top = tax.top_correlations(k=5)
+top = pop.top_correlations(k=5)
 print(f"\n  Strongest benchmark correlations:")
 for _, row in top.iterrows():
     print(f"    {row['feature_a']:>12} <-> {row['feature_b']:<12}  r = {row['correlation']:.3f}")
 
-pca = tax.pca(n_components=3)
+pca = pop.pca(n_components=3)
 print(f"\n  PCA: {pca['cumulative'][-1]:.1%} variance in 3 components")
 
 print(f"\n{'='*65}")
@@ -63,7 +63,7 @@ observed_value = true_scores[observed_idx]
 print(f"\n  Observed: {observed_feature} = {observed_value:.2f}")
 print(f"  Predicting {len(features) - 1} other benchmarks...\n")
 
-state = tax.new_state(obs_noise=1.0)
+state = pop.profile()
 state.observe(observed_feature, observed_value)
 
 # ── Step 4: Compare predictions to ground truth ────────────────────────

@@ -121,17 +121,17 @@ print(f"  {N} occupations x {K} features ({n_skill} skills, {n_know} knowledge, 
 target_name = [n for n in R.index if "Software Developer" in n][0]
 true_vec = R.loc[target_name].values.copy()
 
-tax = skillinfer.Taxonomy.from_dataframe(R.drop(target_name), normalize=False)
-print(f"  {tax}")
-print(f"  Condition number: {tax.condition_number():.1f}")
+pop = skillinfer.Population.from_dataframe(R.drop(target_name), normalize=False)
+print(f"  {pop}")
+print(f"  Condition number: {pop.condition_number():.1f}")
 
 # ── Step 3: Covariance structure ──────────────────────────────────────
 
 print(f"\nTop feature correlations:")
-for _, row in tax.top_correlations(k=8).iterrows():
+for _, row in pop.top_correlations(k=8).iterrows():
     print(f"  {row['feature_a']:>35} <-> {row['feature_b']:<35}  r = {row['correlation']:+.3f}")
 
-pca = tax.pca(n_components=5)
+pca = pop.pca(n_components=5)
 print(f"\nPCA: {pca['cumulative'][-1]:.1%} variance in 5 components")
 for i, v in enumerate(pca["explained_variance_ratio"]):
     print(f"  PC{i+1}: {v:.1%}")
@@ -142,7 +142,7 @@ print(f"\n{'=' * 65}")
 print(f"  Target: {target_name}")
 print(f"{'=' * 65}")
 
-state = tax.new_state(obs_noise=0.05)
+state = pop.profile()
 
 # Observe 3 skills (a software developer evaluated on these)
 observed = {
@@ -198,7 +198,7 @@ for _, row in state.most_uncertain(k=5).iterrows():
 
 print(f"\nHeld-out validation (10 splits):")
 results = skillinfer.validation.held_out_evaluation(
-    tax, frac_observed=[0.1, 0.3, 0.5], n_splits=10, obs_noise=0.05,
+    pop, frac_observed=[0.1, 0.3, 0.5], n_splits=10, obs_noise=0.05,
 )
 summary = results.groupby(["frac_observed", "method"])[["cosine_similarity", "mse"]].mean()
 print(summary.to_string())

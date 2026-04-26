@@ -159,19 +159,19 @@ target_idx = rng.integers(N)
 target_name = R.index[target_idx]
 true_vec = R.iloc[target_idx].values.copy()
 
-tax = skillinfer.Taxonomy.from_dataframe(R.drop(target_name), normalize=False)
-print(f"  {tax}")
-print(f"  Condition number: {tax.condition_number():.1f}")
+pop = skillinfer.Population.from_dataframe(R.drop(target_name), normalize=False)
+print(f"  {pop}")
+print(f"  Condition number: {pop.condition_number():.1f}")
 
 # ── Step 3: Covariance structure ──────────────────────────────────────
 
 print(f"\nTop skill-group correlations:")
-for _, row in tax.top_correlations(k=8).iterrows():
+for _, row in pop.top_correlations(k=8).iterrows():
     a = row['feature_a'][:40]
     b = row['feature_b'][:40]
     print(f"  {a:<40} <-> {b:<40}  r = {row['correlation']:+.3f}")
 
-pca = tax.pca(n_components=5)
+pca = pop.pca(n_components=5)
 print(f"\nPCA: {pca['cumulative'][-1]:.1%} variance in 5 components")
 
 # ── Step 4: Observe a few skill groups, predict the rest ──────────────
@@ -186,7 +186,7 @@ print(f"  Has {len(active_groups)}/{K} skill groups")
 print(f"{'=' * 65}")
 
 # Observe 3 skill groups
-state = tax.new_state(obs_noise=0.1)
+state = pop.profile()
 to_observe = active_groups[:3] if len(active_groups) >= 3 else active_groups
 for feat in to_observe:
     state.observe(feat, 1.0)
@@ -219,7 +219,7 @@ print(f"\n  Cosine similarity to true profile: {cosine:.4f}")
 
 print(f"\nHeld-out validation (10 splits):")
 results = skillinfer.validation.held_out_evaluation(
-    tax, frac_observed=[0.1, 0.3, 0.5], n_splits=10, obs_noise=0.1,
+    pop, frac_observed=[0.1, 0.3, 0.5], n_splits=10, obs_noise=0.1,
 )
 summary = results.groupby(["frac_observed", "method"])[["cosine_similarity", "mse"]].mean()
 print(summary.to_string())

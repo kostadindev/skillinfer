@@ -46,14 +46,14 @@ target = "student_42"
 true_scores = scores.loc[target].values.copy()
 
 # Build taxonomy from everyone EXCEPT the target (no data leakage)
-tax = skillinfer.Taxonomy.from_dataframe(scores.drop(target), normalize=False)
-print(f"Taxonomy: {tax}")
-print(f"Condition number: {tax.condition_number():.1f}")
+pop = skillinfer.Population.from_dataframe(scores.drop(target), normalize=False)
+print(f"Population: {pop}")
+print(f"Condition number: {pop.condition_number():.1f}")
 print()
 
 # Show the covariance structure
 print("Top correlations:")
-for _, row in tax.top_correlations(k=5).iterrows():
+for _, row in pop.top_correlations(k=5).iterrows():
     print(f"  {row['feature_a']:>10} <-> {row['feature_b']:<10}  r = {row['correlation']:+.3f}")
 print()
 
@@ -64,7 +64,7 @@ print(f"{'=' * 55}")
 print()
 
 # Observe only Math
-state = tax.new_state(obs_noise=2.0)
+state = pop.profile()
 state.observe("Math", true_scores[subjects.index("Math")])
 
 print(f"After observing Math = {true_scores[subjects.index('Math')]:.1f}:")
@@ -116,7 +116,7 @@ print(f"  Cosine similarity: {cosine2:.4f}  (+{cosine2 - cosine:.4f})")
 print()
 print("Held-out validation (does covariance transfer help?):")
 results = skillinfer.validation.held_out_evaluation(
-    tax, frac_observed=[0.2, 0.5], n_splits=5, obs_noise=2.0,
+    pop, frac_observed=[0.2, 0.5], n_splits=5, obs_noise=2.0,
 )
 summary = results.groupby(["frac_observed", "method"])["cosine_similarity"].mean()
 print(summary.to_string())
