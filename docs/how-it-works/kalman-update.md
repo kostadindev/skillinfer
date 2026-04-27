@@ -15,7 +15,15 @@ K = \frac{\Sigma_{:,j}}{\Sigma_{j,j} + \sigma^2_{\text{noise}}}
 $$
 
 $$
-\mu \leftarrow \mu + K \cdot \text{innovation}
+\delta = K \cdot \text{innovation}
+$$
+
+$$
+h_i = \begin{cases} 1 - \mu_i & \text{if } \delta_i > 0 \\ \mu_i & \text{if } \delta_i \leq 0 \end{cases}
+$$
+
+$$
+\mu_i \leftarrow \mu_i + \delta_i \cdot h_i
 $$
 
 $$
@@ -27,6 +35,7 @@ where:
 - $K$ is the **Kalman gain** — a K-dimensional vector
 - $\sigma^2_{\text{noise}}$ is the observation noise variance (`noise ** 2`)
 - $\Sigma_{:,j}$ is the $j$-th column of the covariance matrix
+- $h_i$ is the **headroom** — how much room feature $i$ has to move in the direction of the update
 
 ## What each part does
 
@@ -46,9 +55,14 @@ The gain for feature $i$ is proportional to $\Sigma_{i,j}$ — how much feature 
 
 The denominator $\Sigma_{j,j} + \sigma^2_{\text{noise}}$ normalizes by the total variance (prior uncertainty + measurement noise).
 
-### Mean update
+### Bounded mean update
 
-Each feature's mean shifts by $K_i \times \text{innovation}$. This is **covariance transfer** — the observed feature's value propagates to every other feature through the off-diagonal covariance.
+The raw shift $\delta_i = K_i \times \text{innovation}$ is scaled by the **headroom** $h_i$ before being applied. Headroom measures how much room feature $i$ has to move in the direction of the update:
+
+- If $\delta_i > 0$ (pushing up), headroom is $1 - \mu_i$ — distance to the upper bound
+- If $\delta_i \leq 0$ (pushing down), headroom is $\mu_i$ — distance to the lower bound
+
+This ensures predictions stay within $[0, 1]$ naturally. A feature already at 0.95 being pushed upward has only 0.05 headroom — it barely moves. A feature at 0.5 has 0.5 headroom in either direction and moves freely. Features asymptotically approach 0 and 1 but never cross.
 
 ### Covariance update
 
@@ -69,7 +83,12 @@ def kalman_update(mu, Sigma, j, y_j, obs_noise):
 
     S_j = Sigma[:, j]
     K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
-    mu += K_gain * (y_j - mu[j])
+    delta = K_gain * (y_j - mu[j])
+
+    # Bounded update: scale each feature's shift by available headroom.
+    headroom = np.where(delta > 0, 1.0 - mu, mu)
+    mu += delta * np.clip(headroom, 0.0, 1.0)
+
     Sigma -= np.outer(K_gain, S_j)
 
     # Numerical stability: enforce symmetry and positive diagonal
@@ -79,16 +98,18 @@ def kalman_update(mu, Sigma, j, y_j, obs_noise):
     return mu, Sigma
 ```
 
-The symmetry enforcement and positive diagonal clamping prevent floating-point drift from breaking the covariance structure over many updates.
+The headroom scaling ensures predictions stay in $[0, 1]$ without clipping. The symmetry enforcement and positive diagonal clamping prevent floating-point drift from breaking the covariance structure over many updates.
 
-## Why this is exact
+## Exactness and the bounded approximation
 
-The Kalman update is the **exact Bayesian posterior** when:
+The standard Kalman update is the **exact Bayesian posterior** when:
 
 1. The prior is Gaussian: $p(\mathbf{x}) = \mathcal{N}(\mu, \Sigma)$
 2. The observation is a linear function of the state with Gaussian noise: $y_j = x_j + \epsilon$, where $\epsilon \sim \mathcal{N}(0, \sigma^2_{\text{noise}})$
 
 Under these conditions, the posterior is also Gaussian, and the Kalman update computes its exact mean and covariance. No approximations, no sampling, no variational bounds.
+
+The headroom scaling is a lightweight modification for bounded skill domains. Since a pure Gaussian model has unbounded support, large innovations can push correlated features outside $[0, 1]$. The headroom factor dampens updates as features approach the boundary — a feature at 0.95 barely moves upward, while a feature at 0.5 moves freely. This trades exact Gaussianity for bounded predictions while preserving the covariance transfer that makes the model useful.
 
 ## Batch updates
 
@@ -101,7 +122,9 @@ def kalman_update_batch(mu, Sigma, obs_indices, obs_values, obs_noise):
     for j, y_j in zip(obs_indices, obs_values):
         S_j = Sigma[:, j]
         K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
-        mu += K_gain * (y_j - mu[j])
+        delta = K_gain * (y_j - mu[j])
+        headroom = np.where(delta > 0, 1.0 - mu, mu)
+        mu += delta * np.clip(headroom, 0.0, 1.0)
         Sigma -= np.outer(K_gain, S_j)
     return mu, Sigma
 ```

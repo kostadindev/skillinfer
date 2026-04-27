@@ -33,7 +33,17 @@ def kalman_update(
     S_j = Sigma[:, j]
     denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
     K_gain = S_j / denom
-    mu += K_gain * (y_j - mu[j])
+    delta = K_gain * (y_j - mu[j])
+
+    # Bounded update: scale each predicted feature's shift by available headroom.
+    # Pushing up → headroom is (1 - mu[i]), pushing down → headroom is mu[i].
+    # Features near a boundary are barely moved; features at 0.5 move freely.
+    # The observed feature j is exempt — it should converge to its observed value.
+    headroom = np.where(delta > 0, 1.0 - mu, mu)
+    scale = np.clip(headroom, 0.0, 1.0)
+    scale[j] = 1.0
+    mu += delta * scale
+
     Sigma -= np.outer(K_gain, S_j)
 
     # Numerical stability: enforce symmetry and positive diagonal
@@ -71,7 +81,11 @@ def kalman_update_batch(
         S_j = Sigma[:, j]
         denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
         K_gain = S_j / denom
-        mu += K_gain * (y_j - mu[j])
+        delta = K_gain * (y_j - mu[j])
+        headroom = np.where(delta > 0, 1.0 - mu, mu)
+        scale = np.clip(headroom, 0.0, 1.0)
+        scale[j] = 1.0
+        mu += delta * scale
         Sigma -= np.outer(K_gain, S_j)
 
     # Numerical stability

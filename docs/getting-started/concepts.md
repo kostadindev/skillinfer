@@ -64,7 +64,7 @@ The model is most powerful when:
 
 | Assumption | What it means | When it breaks |
 |-----------|---------------|----------------|
-| **Linear-Gaussian** | Exact Bayesian update for continuous, normally-distributed skills | Binary/ordinal data (update is approximate) |
+| **Linear-Gaussian** | Exact Bayesian update for continuous, normally-distributed skills. Headroom scaling keeps predictions in [0, 1] at the cost of exact Gaussianity. | Binary/ordinal data (update is approximate) |
 | **Stationary skills** | Skills don't change between observations | Long time horizons (skill development over months) |
 | **Point-estimate covariance** | Covariance is estimated once and treated as known | Very few entities relative to number of skills |
 | **Correlated skills** | Method's value comes from off-diagonal structure | Truly independent skills (reverts to per-skill baseline) |

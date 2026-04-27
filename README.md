@@ -25,11 +25,11 @@ print(profile.predict())                  # predict all 120 skills
 
 ```
                            feature   mean    std  ci_lower  ci_upper
-    Skill:Complex Problem Solving   1.12   0.17      0.78      1.45
-          Skill:Critical Thinking   0.96   0.15      0.66      1.25
+    Skill:Complex Problem Solving   0.81   0.17      0.47      1.00
+          Skill:Critical Thinking   0.73   0.15      0.43      1.00
               Skill:Programming     0.92   0.01      0.90      0.93  ← observed
-                Skill:Mathematics   0.85   0.12      0.61      1.09
-         Ability:Static Strength   0.00   0.23      0.00      0.45  ← anti-correlated
+                Skill:Mathematics   0.67   0.12      0.43      0.91
+         Ability:Static Strength   0.10   0.23      0.00      0.55  ← anti-correlated
 ...
 [120 rows x 5 columns]
 ```
@@ -42,7 +42,9 @@ When you observe one skill, the Kalman update propagates to every other skill vi
 - Skills with **negative covariance** move opposite (observe high Programming → predict low Static Strength)
 - **Independent skills** are unaffected
 
-Each `observe()` call is O(K²) — one matrix-vector product. No iteration, no convergence, no approximation.
+Each update is scaled by **headroom** — how much room the feature has to move toward the boundary. A feature already at 0.95 barely moves upward; a feature at 0.5 moves freely. This keeps all predictions within [0, 1] naturally.
+
+Each `observe()` call is O(K²) — one matrix-vector product. No iteration, no convergence.
 
 ## Core API
 
