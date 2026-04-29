@@ -76,6 +76,7 @@ pip install skillinfer
 |------|-----------|---------|
 | **`Population`** | Learned covariance from a population of entities | `Population.from_dataframe(df)` |
 | **`Profile`** | One entity's skill profile — gets sharper with observations | `pop.profile()` → `.observe()` → `.predict()` |
+| **`Skill`** | A label-score pair for a single skill measurement | `Skill("Programming", score=0.92)` |
 | **`Task`** | A weighted mix of skills describing what a job requires | `Task({"math": 1.0, "code": 0.5})` |
 
 ---

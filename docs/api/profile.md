@@ -15,15 +15,20 @@ print(profile.predict())
 ### `observe`
 
 ```python
-def observe(self, feature: str | int | Skill, value: float) -> Profile
+def observe(self, feature: str | int | Skill, value: float | None = None) -> Profile
 ```
 
 Observe one feature value. Runs a [Kalman update](../how-it-works/kalman-update.md), updating the full profile in place. Returns `self` for chaining.
+
+If `feature` is a `Skill` with a score, `value` can be omitted.
 
 **Example**
 
 ```python
 profile.observe("BBH", 32.7).observe("IFEval", 47.1)
+
+# Or using Skill objects
+profile.observe(Skill("BBH", score=32.7))
 ```
 
 ---
@@ -31,15 +36,18 @@ profile.observe("BBH", 32.7).observe("IFEval", 47.1)
 ### `observe_many`
 
 ```python
-def observe_many(self, observations: dict[str | int, float]) -> Profile
+def observe_many(self, observations: dict[str | int, float] | list[Skill]) -> Profile
 ```
 
-Observe multiple features at once. Returns `self` for chaining.
+Observe multiple features at once. Accepts a `{feature: value}` dict or a list of `Skill` objects with scores. Returns `self` for chaining.
 
 **Example**
 
 ```python
 profile.observe_many({"BBH": 32.7, "IFEval": 47.1, "MATH Lvl 5": 18.0})
+
+# Or using Skill objects
+profile.observe_many([Skill("BBH", score=32.7), Skill("IFEval", score=47.1)])
 ```
 
 ---

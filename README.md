@@ -50,7 +50,7 @@ Each `observe()` call is O(K²) — one matrix-vector product. No iteration, no 
 
 ```python
 import skillinfer
-from skillinfer import Task
+from skillinfer import Skill, Task
 
 # Build a population from any entity-feature matrix
 pop = skillinfer.Population.from_dataframe(df)

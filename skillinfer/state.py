@@ -114,16 +114,25 @@ class Profile:
             )
         return idx
 
-    def observe(self, feature: str | int, value: float) -> Profile:
+    def observe(self, feature: str | int | Skill, value: float | None = None) -> Profile:
         """Observe one feature value. Updates mu and Sigma in place.
 
         Parameters
         ----------
-        feature : feature name or integer index.
-        value : observed value.
+        feature : feature name, integer index, or Skill with a score.
+        value : observed value. Optional if feature is a Skill with a score.
 
         Returns self for method chaining.
         """
+        if isinstance(feature, Skill) and value is None:
+            if feature.score is None:
+                raise ValueError(
+                    f"Skill {feature.name!r} has no score. "
+                    "Pass a value or set skill.score first."
+                )
+            value = feature.score
+        if value is None:
+            raise TypeError("value is required when feature is a str or int.")
         j = self._resolve_index(feature)
         self.mu, self.Sigma = kalman_update(
             self.mu, self.Sigma, j, value, self.noise
@@ -133,16 +142,25 @@ class Profile:
         return self
 
     def observe_many(
-        self, observations: dict[str | int, float]
+        self, observations: dict[str | int, float] | list[Skill]
     ) -> Profile:
         """Observe multiple features at once.
 
         Parameters
         ----------
-        observations : {feature: value} mapping.
+        observations : {feature: value} mapping, or list of Skills with scores.
 
         Returns self for method chaining.
         """
+        if isinstance(observations, list):
+            obs_dict: dict[str | int, float] = {}
+            for skill in observations:
+                if not isinstance(skill, Skill) or skill.score is None:
+                    raise ValueError(
+                        "When passing a list, each element must be a Skill with a score."
+                    )
+                obs_dict[skill.name] = skill.score
+            observations = obs_dict
         indices = np.array([self._resolve_index(f) for f in observations])
         values = np.array(list(observations.values()), dtype=float)
         self.mu, self.Sigma = kalman_update_batch(

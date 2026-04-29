@@ -4,31 +4,39 @@ from __future__ import annotations
 
 
 class Skill:
-    """A skill dimension with a name and optional description.
+    """A label-score pair for a single skill measurement.
 
     Anywhere the API accepts a feature name (str), it also accepts a Skill.
+    When a score is set, ``profile.observe(skill)`` uses it directly.
 
     Parameters
     ----------
     name : the skill identifier (must match a column in the Population).
+    score : observed score for this skill (optional).
     description : human-readable description of what this skill measures.
 
     Examples
     --------
-    >>> Skill("BBH", "Big-Bench Hard: diverse challenging tasks")
-    >>> Skill("Programming")
+    >>> Skill("Programming", score=0.92)
+    >>> Skill("BBH", description="Big-Bench Hard: diverse challenging tasks")
+    >>> Skill("Programming", score=0.92, description="General programming ability")
+    >>> Skill("Writing")  # label only
     """
 
-    __slots__ = ("name", "description")
+    __slots__ = ("name", "score", "description")
 
-    def __init__(self, name: str, description: str = ""):
+    def __init__(self, name: str, *, score: float | None = None, description: str = ""):
         self.name = name
+        self.score = score
         self.description = description
 
     def __repr__(self) -> str:
+        parts = [repr(self.name)]
+        if self.score is not None:
+            parts.append(repr(self.score))
         if self.description:
-            return f"Skill({self.name!r}, {self.description!r})"
-        return f"Skill({self.name!r})"
+            parts.append(repr(self.description))
+        return f"Skill({', '.join(parts)})"
 
     def __str__(self) -> str:
         return self.name

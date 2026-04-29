@@ -78,7 +78,7 @@ class Population:
         ...     "BBH": "Big-Bench Hard: diverse challenging tasks",
         ...     "MMLU-PRO": "Professional-level multitask understanding",
         ... })
-        >>> tax.describe_skills([Skill("BBH", "Big-Bench Hard")])
+        >>> tax.describe_skills([Skill("BBH", description="Big-Bench Hard")])
         """
         if isinstance(descriptions, list):
             for skill in descriptions:
@@ -87,7 +87,7 @@ class Population:
         else:
             for name, desc in descriptions.items():
                 if name in self._skills:
-                    self._skills[name] = Skill(name, desc)
+                    self._skills[name] = Skill(name, description=desc)
 
     @classmethod
     def from_dataframe(
