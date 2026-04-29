@@ -7,7 +7,7 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
-from skillinfer._kalman import kalman_update, kalman_update_batch
+from skillinfer._kalman import condition, posterior_covariance
 from skillinfer.types import Skill, Task
 
 
@@ -25,13 +25,16 @@ class Profile:
     """Posterior belief about one entity's feature vector.
 
     Created via ``Population.profile()``. Updated via ``observe()`` calls.
+    The population covariance is shared and never mutated — observations
+    update only the posterior mean via the Gaussian conditioning formula.
 
     Attributes
     ----------
     mu : np.ndarray
-        (K,) posterior mean.
+        (K,) posterior mean (computed from observations via conditioning).
     Sigma : np.ndarray
-        (K, K) posterior covariance.
+        (K, K) posterior covariance (derived from population covariance
+        and observed feature set).
     feature_names : list[str]
         Feature names inherited from Population.
     n_observations : int
@@ -40,54 +43,108 @@ class Profile:
 
     def __init__(
         self,
-        mu: np.ndarray,
-        Sigma: np.ndarray,
+        prior_mean: np.ndarray,
+        pop_cov: np.ndarray,
         feature_names: list[str],
         noise: float = 1e-6,
     ):
-        self.mu = mu
-        self.Sigma = Sigma
-        self._prior_var = np.diag(Sigma).copy()
+        self._prior_mean = prior_mean
+        self._pop_cov = pop_cov          # shared reference, never mutated
         self.feature_names = feature_names
         self.noise = noise
         self.n_observations = 0
-        self._observed: set[int] = set()
+        self._observed: dict[int, float] = {}   # index -> observed value
         self._name_to_idx = {name: i for i, name in enumerate(feature_names)}
         self._skills: dict[str, Skill] = {}
 
-    @classmethod
-    def from_dict(cls, data: dict) -> Profile:
-        """Reconstruct a Profile from the output of ``to_dict()``.
+        # Caches (invalidated on observe)
+        self._mu_cache: np.ndarray | None = None
+        self._sigma_cache: np.ndarray | None = None
 
-        Note: this restores the mean vector and metadata but not the
-        full posterior covariance. The covariance is set to a diagonal
-        matrix using the exported std values. For full covariance
-        round-tripping, re-create the profile from a Population.
+    @property
+    def mu(self) -> np.ndarray:
+        """(K,) posterior mean vector."""
+        if self._mu_cache is None:
+            if not self._observed:
+                self._mu_cache = self._prior_mean.copy()
+            else:
+                obs_idx = np.array(list(self._observed.keys()), dtype=int)
+                obs_val = np.array(list(self._observed.values()), dtype=float)
+                self._mu_cache = condition(
+                    self._prior_mean, self._pop_cov,
+                    obs_idx, obs_val, self.noise,
+                )
+        return self._mu_cache
+
+    @property
+    def Sigma(self) -> np.ndarray:
+        """(K, K) posterior covariance matrix."""
+        if self._sigma_cache is None:
+            if not self._observed:
+                self._sigma_cache = self._pop_cov.copy()
+            else:
+                obs_idx = np.array(list(self._observed.keys()), dtype=int)
+                self._sigma_cache = posterior_covariance(
+                    self._pop_cov, obs_idx, self.noise,
+                )
+        return self._sigma_cache
+
+    @property
+    def _prior_var(self) -> np.ndarray:
+        """Diagonal of population covariance (prior variance)."""
+        return np.diag(self._pop_cov)
+
+    def _invalidate_cache(self) -> None:
+        self._mu_cache = None
+        self._sigma_cache = None
+
+    @classmethod
+    def from_dict(cls, data: dict, population=None) -> Profile:
+        """Reconstruct a Profile from the output of ``to_dict()``.
 
         Parameters
         ----------
         data : dict as returned by ``to_dict()``.
+        population : Population used to create the original profile.
+            If given, observations are replayed for full fidelity.
+            If None, a lossy reconstruction is used (diagonal covariance
+            only — no cross-feature propagation on future observations).
         """
+        if population is not None:
+            noise = data.get("noise", 1e-6)
+            profile = population.profile(noise=noise)
+            obs = data.get("observations", {})
+            if obs:
+                profile.observe_many(obs)
+            return profile
+
+        # Lossy fallback: no population available
         mu = np.array(data["mean"], dtype=float)
         stds = np.array(data["std"], dtype=float)
         Sigma = np.diag(stds ** 2)
         feature_names = list(data["feature_names"])
         noise = data.get("noise", 1e-6)
-        profile = cls(mu=mu, Sigma=Sigma, feature_names=feature_names, noise=noise)
+        profile = cls(
+            prior_mean=mu, pop_cov=Sigma,
+            feature_names=feature_names, noise=noise,
+        )
         profile.n_observations = data.get("n_observations", 0)
         name_to_idx = {n: i for i, n in enumerate(feature_names)}
-        for feat in data.get("observed_features", []):
+        for feat, val in data.get("observations", {}).items():
             if feat in name_to_idx:
-                profile._observed.add(name_to_idx[feat])
+                profile._observed[name_to_idx[feat]] = val
+        # Pre-fill mu cache since we already have the conditioned mean
+        profile._mu_cache = mu.copy()
         return profile
 
     @classmethod
-    def from_json(cls, source: str) -> Profile:
+    def from_json(cls, source: str, population=None) -> Profile:
         """Reconstruct a Profile from a JSON string or file path.
 
         Parameters
         ----------
         source : JSON string, or a path to a JSON file.
+        population : Population to reconstruct from (see from_dict).
         """
         import json
         try:
@@ -95,7 +152,7 @@ class Profile:
         except json.JSONDecodeError:
             with open(source) as f:
                 data = json.load(f)
-        return cls.from_dict(data)
+        return cls.from_dict(data, population)
 
     def _resolve_index(self, feature: str | int | Skill) -> int:
         if isinstance(feature, Skill):
@@ -108,14 +165,15 @@ class Profile:
                 )
             return self._name_to_idx[feature]
         idx = int(feature)
-        if idx < 0 or idx >= len(self.mu):
+        if idx < 0 or idx >= len(self._prior_mean):
             raise IndexError(
-                f"Feature index {idx} out of range for {len(self.mu)} features."
+                f"Feature index {idx} out of range for "
+                f"{len(self._prior_mean)} features."
             )
         return idx
 
     def observe(self, feature: str | int | Skill, value: float | None = None) -> Profile:
-        """Observe one feature value. Updates mu and Sigma in place.
+        """Observe one feature value. Updates the posterior mean.
 
         Parameters
         ----------
@@ -134,11 +192,9 @@ class Profile:
         if value is None:
             raise TypeError("value is required when feature is a str or int.")
         j = self._resolve_index(feature)
-        self.mu, self.Sigma = kalman_update(
-            self.mu, self.Sigma, j, value, self.noise
-        )
-        self._observed.add(j)
+        self._observed[j] = float(value)
         self.n_observations += 1
+        self._invalidate_cache()
         return self
 
     def observe_many(
@@ -161,14 +217,11 @@ class Profile:
                     )
                 obs_dict[skill.name] = skill.score
             observations = obs_dict
-        indices = np.array([self._resolve_index(f) for f in observations])
-        values = np.array(list(observations.values()), dtype=float)
-        self.mu, self.Sigma = kalman_update_batch(
-            self.mu, self.Sigma, indices, values, self.noise
-        )
-        for j in indices:
-            self._observed.add(int(j))
+        for f, v in observations.items():
+            j = self._resolve_index(f)
+            self._observed[j] = float(v)
         self.n_observations += len(observations)
+        self._invalidate_cache()
         return self
 
     def mean(self, feature: str | int | None = None) -> float | np.ndarray:
@@ -248,15 +301,18 @@ class Profile:
         Returns
         -------
         dict with keys: feature_names, mean, std, n_observations,
-            observed_features, noise.
+            observed_features, observations, noise.
         """
         stds = np.sqrt(np.diag(self.Sigma)).tolist()
         return {
             "feature_names": list(self.feature_names),
-            "mean": self.mu.tolist(),
+            "mean": np.clip(self.mu, 0.0, 1.0).tolist(),
             "std": stds,
             "n_observations": self.n_observations,
             "observed_features": [self.feature_names[i] for i in sorted(self._observed)],
+            "observations": {
+                self.feature_names[i]: v for i, v in self._observed.items()
+            },
             "noise": self.noise,
         }
 
@@ -432,15 +488,18 @@ class Profile:
     def copy(self) -> Profile:
         """Deep copy of the state."""
         new = Profile(
-            mu=self.mu.copy(),
-            Sigma=self.Sigma.copy(),
+            prior_mean=self._prior_mean,
+            pop_cov=self._pop_cov,
             feature_names=list(self.feature_names),
             noise=self.noise,
         )
         new.n_observations = self.n_observations
-        new._observed = set(self._observed)
-        new._prior_var = self._prior_var.copy()
+        new._observed = dict(self._observed)
         new._skills = dict(self._skills)
+        if self._mu_cache is not None:
+            new._mu_cache = self._mu_cache.copy()
+        if self._sigma_cache is not None:
+            new._sigma_cache = self._sigma_cache.copy()
         return new
 
     def match_score(

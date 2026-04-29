@@ -27,7 +27,7 @@ Beyond the thesis:
 import numpy as np
 import pandas as pd
 
-from skillinfer._kalman import kalman_update, diagonal_update
+from skillinfer._kalman import condition, posterior_covariance, diagonal_update
 
 
 def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
@@ -136,11 +136,11 @@ def held_out_evaluation(
                 if len(unobs_dims) == 0:
                     continue
 
-                # Method 1: Full Kalman (transfer)
-                mu_k = pop_mean.copy()
-                Sigma_k = Sigma.copy()
-                for j, y in zip(obs_dims, obs_vals):
-                    mu_k, Sigma_k = kalman_update(mu_k, Sigma_k, int(j), float(y), obs_noise)
+                # Method 1: Full conditioning (transfer)
+                mu_k = condition(
+                    pop_mean, Sigma, obs_dims, obs_vals, obs_noise,
+                )
+                Sigma_k = posterior_covariance(Sigma, obs_dims, obs_noise)
 
                 # Method 2: Diagonal (no transfer)
                 mu_d = pop_mean.copy()

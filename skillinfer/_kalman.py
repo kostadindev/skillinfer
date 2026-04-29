@@ -1,98 +1,98 @@
-"""Core Kalman filter update math (pure numpy, no classes)."""
+"""Core Kalman conditioning math (pure numpy, no classes).
+
+The population covariance is always used as a read-only reference.
+Observations condition the mean and covariance via the Gaussian
+conditioning formula — no sequential mutation of the covariance.
+"""
 
 import numpy as np
 
 
-def kalman_update(
-    mu: np.ndarray,
-    Sigma: np.ndarray,
-    j: int,
-    y_j: float,
-    obs_noise: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Single-feature Kalman update.
-
-    Observing feature j with value y_j updates the full mean vector and
-    covariance matrix via the off-diagonal covariance structure.
-
-    Parameters
-    ----------
-    mu : (K,) posterior mean
-    Sigma : (K, K) posterior covariance
-    j : index of observed feature
-    y_j : observed value
-    obs_noise : observation noise standard deviation
-
-    Returns
-    -------
-    mu_new, Sigma_new : updated mean and covariance (copies)
-    """
-    mu = mu.copy()
-    Sigma = Sigma.copy()
-
-    S_j = Sigma[:, j]
-    denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
-    K_gain = S_j / denom
-    delta = K_gain * (y_j - mu[j])
-
-    # Bounded update: scale each predicted feature's shift by available headroom.
-    # Pushing up → headroom is (1 - mu[i]), pushing down → headroom is mu[i].
-    # Features near a boundary are barely moved; features at 0.5 move freely.
-    # The observed feature j is exempt — it should converge to its observed value.
-    headroom = np.where(delta > 0, 1.0 - mu, mu)
-    scale = np.clip(headroom, 0.0, 1.0)
-    scale[j] = 1.0
-    mu += delta * scale
-
-    Sigma -= np.outer(K_gain, S_j)
-
-    # Numerical stability: enforce symmetry and positive diagonal
-    Sigma = (Sigma + Sigma.T) * 0.5
-    np.maximum(np.diag(Sigma), 1e-10, out=Sigma[np.diag_indices_from(Sigma)])
-
-    return mu, Sigma
-
-
-def kalman_update_batch(
-    mu: np.ndarray,
-    Sigma: np.ndarray,
+def condition(
+    prior_mean: np.ndarray,
+    pop_cov: np.ndarray,
     obs_indices: np.ndarray,
     obs_values: np.ndarray,
     obs_noise: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Sequential Kalman updates for multiple observations.
+) -> np.ndarray:
+    """Compute posterior mean by conditioning on observed features.
+
+    Uses the Gaussian conditioning formula with the population covariance
+    (which is not modified). Each observation propagates to all features
+    via the learned covariance structure.
 
     Parameters
     ----------
-    mu : (K,) posterior mean
-    Sigma : (K, K) posterior covariance
-    obs_indices : (n_obs,) which features were observed
-    obs_values : (n_obs,) observed values
-    obs_noise : observation noise standard deviation
+    prior_mean : (K,) prior mean vector (population mean, entity, or custom).
+    pop_cov : (K, K) population covariance matrix (read-only).
+    obs_indices : (n_obs,) indices of observed features.
+    obs_values : (n_obs,) observed values.
+    obs_noise : observation noise standard deviation.
 
     Returns
     -------
-    mu_new, Sigma_new : updated mean and covariance (copies)
+    mu_post : (K,) posterior mean.
     """
-    mu = mu.copy()
-    Sigma = Sigma.copy()
+    if len(obs_indices) == 0:
+        return prior_mean.copy()
 
-    for j, y_j in zip(obs_indices, obs_values):
-        S_j = Sigma[:, j]
-        denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
-        K_gain = S_j / denom
-        delta = K_gain * (y_j - mu[j])
-        headroom = np.where(delta > 0, 1.0 - mu, mu)
-        scale = np.clip(headroom, 0.0, 1.0)
-        scale[j] = 1.0
-        mu += delta * scale
-        Sigma -= np.outer(K_gain, S_j)
+    J = np.asarray(obs_indices, dtype=int)
+    y = np.asarray(obs_values, dtype=float)
 
-    # Numerical stability
-    Sigma = (Sigma + Sigma.T) * 0.5
-    np.maximum(np.diag(Sigma), 1e-10, out=Sigma[np.diag_indices_from(Sigma)])
+    S_J = pop_cov[:, J]                           # (K, n_obs)
+    S_JJ = pop_cov[np.ix_(J, J)]                  # (n_obs, n_obs)
+    M = S_JJ + obs_noise ** 2 * np.eye(len(J))    # (n_obs, n_obs)
 
-    return mu, Sigma
+    innovation = y - prior_mean[J]                 # (n_obs,)
+    alpha = np.linalg.solve(M, innovation)         # (n_obs,)
+    delta = S_J @ alpha                            # (K,)
+
+    # Bounded update: scale shift by available headroom in [0, 1].
+    # Features near a boundary are barely moved; features at 0.5 move freely.
+    # Observed features are exempt so they converge to their observed values.
+    mu = prior_mean.copy()
+    headroom = np.where(delta > 0, 1.0 - mu, mu)
+    scale = np.clip(headroom, 0.0, 1.0)
+    scale[J] = 1.0
+    mu += delta * scale
+
+    return mu
+
+
+def posterior_covariance(
+    pop_cov: np.ndarray,
+    obs_indices: np.ndarray,
+    obs_noise: float,
+) -> np.ndarray:
+    """Compute posterior covariance after conditioning on observed features.
+
+    Parameters
+    ----------
+    pop_cov : (K, K) population covariance matrix (read-only).
+    obs_indices : (n_obs,) indices of observed features.
+    obs_noise : observation noise standard deviation.
+
+    Returns
+    -------
+    Sigma_post : (K, K) posterior covariance matrix.
+    """
+    if len(obs_indices) == 0:
+        return pop_cov.copy()
+
+    J = np.asarray(obs_indices, dtype=int)
+    S_J = pop_cov[:, J]                           # (K, n_obs)
+    S_JJ = pop_cov[np.ix_(J, J)]                  # (n_obs, n_obs)
+    M = S_JJ + obs_noise ** 2 * np.eye(len(J))
+
+    beta = np.linalg.solve(M, S_J.T)              # (n_obs, K)
+    Sigma_post = pop_cov - S_J @ beta              # (K, K)
+
+    # Numerical stability: enforce symmetry and positive diagonal.
+    Sigma_post = (Sigma_post + Sigma_post.T) * 0.5
+    np.maximum(np.diag(Sigma_post), 1e-10,
+               out=Sigma_post[np.diag_indices_from(Sigma_post)])
+
+    return Sigma_post
 
 
 def diagonal_update(

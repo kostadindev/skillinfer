@@ -238,8 +238,8 @@ class Population:
             noise = max(noise, 1e-8)
 
         profile = Profile(
-            mu=mu,
-            Sigma=self.covariance.copy(),
+            prior_mean=mu,
+            pop_cov=self.covariance,
             feature_names=self.feature_names,
             noise=noise,
         )
