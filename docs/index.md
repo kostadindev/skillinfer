@@ -10,8 +10,8 @@ hide:
 **Infer a full skill profile from a few observations.**
 { .hero-tagline }
 
-One benchmark predicts 37 others. One task observation reveals 120 skills.
-`skillinfer` learns how capabilities co-vary across a population and fills in the gaps, so you can understand what any agent, person, or team can do — without testing everything.
+Observe a few skills, predict the rest — with calibrated uncertainty.
+`skillinfer` learns how capabilities co-vary across a population and uses that structure to infer a full profile from partial observations.
 
 [Get Started](getting-started/quickstart.md){ .md-button .md-button--primary }
 [API Reference](api/population.md){ .md-button }
@@ -198,7 +198,7 @@ pip install skillinfer
 
 ## Skill profiles as context for LLM orchestration
 
-Skill profiles are not a heuristic for matching — they are **structured context you feed to an LLM** alongside natural language instructions. The LLM makes the routing decision; `skillinfer` gives it the capability data.
+`skillinfer` profiles are **structured context you feed to an LLM orchestrator** alongside cost, latency, and business constraints. The LLM makes the routing decision; `skillinfer` gives it calibrated capability data.
 
 ```python
 import pandas as pd

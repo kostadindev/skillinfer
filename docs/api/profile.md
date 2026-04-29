@@ -132,6 +132,8 @@ Score this agent against a task. Computes expected weighted-average performance 
 
 **Returns:** `MatchResult` (named tuple) with fields: `score`, `std`, `ci_lower`, `ci_upper`, `p_above_threshold`.
 
+`p_above_threshold` is computed as $1 - \Phi\!\left(\frac{\text{threshold} - \text{score}}{\text{std}}\right)$ where $\Phi$ is the standard normal CDF, assuming the weighted score is Gaussian.
+
 **Example**
 
 ```python

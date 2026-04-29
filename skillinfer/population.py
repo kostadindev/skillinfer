@@ -367,7 +367,7 @@ class Population:
 
     def __repr__(self) -> str:
         N, K = self.matrix.shape
-        s = f"Population({N} agents x {K} skills"
+        s = f"Population({N} entities x {K} skills"
         if self.shrinkage is not None:
             s += f", shrinkage={self.shrinkage:.4f}"
         s += ")"

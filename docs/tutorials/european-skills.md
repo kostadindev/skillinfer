@@ -30,7 +30,7 @@ print(pop)
 ```
 
 ```text
-Population(2999 agents x 134 skills, shrinkage=0.0211)
+Population(2999 entities x 134 skills, shrinkage=0.0211)
   Condition number: 468.3
   Effective dimensions: ~5 (90% variance)
 ```

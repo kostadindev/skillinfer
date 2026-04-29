@@ -24,7 +24,7 @@ O\*NET is the most comprehensive public database of occupational skill requireme
 ```python
 pop = skillinfer.datasets.onet()
 print(pop)
-# Population(894 agents x 120 skills, shrinkage=0.0054)
+# Population(894 entities x 120 skills, shrinkage=0.0054)
 ```
 
 ### What's in it
@@ -102,7 +102,7 @@ ESCO is an independently curated taxonomy maintained by EU expert panels. Where 
 ```python
 pop = skillinfer.datasets.esco()
 print(pop)
-# Population(2999 agents x 134 skills, shrinkage=0.0211)
+# Population(2999 entities x 134 skills, shrinkage=0.0211)
 ```
 
 ### What's in it

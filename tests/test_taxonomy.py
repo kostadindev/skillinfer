@@ -97,7 +97,7 @@ def test_condition_number(sample_df):
 def test_repr(sample_df):
     tax = Population.from_dataframe(sample_df)
     r = repr(tax)
-    assert "5 agents" in r
+    assert "5 entities" in r
     assert "4 skills" in r
     assert "shrinkage" in r
 

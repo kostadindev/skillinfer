@@ -31,7 +31,7 @@ Build a Population from a pandas DataFrame.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `df` | `pd.DataFrame` | — | Rows = entities, columns = features. All values must be numeric. No NaN values. |
-| `normalize` | `bool` | `True` | Scale each column to [0, 1]. Set to `False` if data is already on a meaningful scale. |
+| `normalize` | `bool` | `True` | Scale each column to [0, 1]. Set to `False` if data is already on a meaningful scale (e.g., binary 0/1 data, or scores where the raw values matter). |
 | `covariance` | `str` | `"ledoit-wolf"` | `"ledoit-wolf"` (recommended) or `"sample"`. |
 
 **Returns:** `Population`

@@ -8,7 +8,7 @@ Data matrix  →  Population  →  Profile  →  Predictions
 ```
 
 1. **Data matrix**: rows are known entities (AI models, workers, occupations), columns are skills. This is your training data.
-2. **Population**: learns how skills co-vary. The covariance matrix is the core — it encodes which skills travel together.
+2. **Population**: learns how skills co-vary. The covariance matrix is a K x K table that records how every pair of skills co-varies across the population. If entities that score high on Programming also tend to score high on Mathematics, the (Programming, Mathematics) entry is large and positive. If high Programming predicts low Static Strength, that entry is negative. The Kalman filter uses this entire table to propagate a single observation to every other skill.
 3. **Profile**: the posterior belief about *one new entity*. Call `observe()` to update, `predict()` to get predictions with confidence intervals.
 4. **Predictions**: a mean vector (best guess for every skill), a covariance matrix (what's still uncertain), and confidence intervals.
 
@@ -46,11 +46,13 @@ The `noise` parameter on `pop.profile(noise=...)` controls how much the filter t
 
 This is the standard Kalman filter trade-off. Set `noise` to roughly the standard deviation of measurement error you'd expect.
 
-| Data type | Typical `noise` | Why |
-|-----------|----------------|-----|
-| Normalised [0, 1] skills | 0.01 – 0.1 | Precise, bounded measurements |
+**If you don't set `noise`**, the default is 5% of the average feature standard deviation in the population. This is appropriate for most cases — it trusts observations strongly while retaining some prior regularisation.
+
+| Data type | Typical manual `noise` | Why |
+|-----------|----------------------|-----|
+| Normalised [0, 1] skills | 0.001 – 0.01 | Small scale, precise measurements. The auto-default is usually in this range. |
 | Raw benchmark scores | 1.0 – 10.0 | Large scale, noisy single-run evaluations |
-| Binary skill assignments | 0.05 – 0.2 | Approximate (not truly Gaussian) |
+| Binary skill assignments | 0.01 – 0.05 | Approximate (not truly Gaussian); keep low so observations still dominate |
 
 ## When it works well
 
@@ -64,7 +66,7 @@ The model is most powerful when:
 
 | Assumption | What it means | When it breaks |
 |-----------|---------------|----------------|
-| **Linear-Gaussian** | Exact Bayesian update for continuous, normally-distributed skills. Headroom scaling keeps predictions in [0, 1] at the cost of exact Gaussianity. | Binary/ordinal data (update is approximate) |
+| **Linear-Gaussian (with bounded approximation)** | The standard Kalman update is exact for Gaussian data. Headroom scaling modifies the mean update to keep predictions in [0, 1], which trades exact Gaussianity for bounded outputs. The covariance update is unmodified, so posterior uncertainty is slightly overestimated near boundaries. | Binary/ordinal data (update is approximate); predictions near 0 or 1 (headroom dampens updates) |
 | **Stationary skills** | Skills don't change between observations | Long time horizons (skill development over months) |
 | **Point-estimate covariance** | Covariance is estimated once and treated as known | Very few entities relative to number of skills |
 | **Correlated skills** | Method's value comes from off-diagonal structure | Truly independent skills (reverts to per-skill baseline) |

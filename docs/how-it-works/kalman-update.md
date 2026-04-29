@@ -19,7 +19,7 @@ $$
 $$
 
 $$
-h_i = \begin{cases} 1 - \mu_i & \text{if } \delta_i > 0 \\ \mu_i & \text{if } \delta_i \leq 0 \end{cases}
+h_i = \begin{cases} 1 & \text{if } i = j \text{ (observed feature)} \\ 1 - \mu_i & \text{if } \delta_i > 0 \\ \mu_i & \text{if } \delta_i \leq 0 \end{cases}
 $$
 
 $$
@@ -53,7 +53,7 @@ The gain for feature $i$ is proportional to $\Sigma_{i,j}$ — how much feature 
 - If $\Sigma_{i,j} < 0$: feature $i$ moves in the **opposite direction**
 - If $\Sigma_{i,j} \approx 0$: feature $i$ is **unaffected**
 
-The denominator $\Sigma_{j,j} + \sigma^2_{\text{noise}}$ normalizes by the total variance (prior uncertainty + measurement noise).
+The denominator $\Sigma_{j,j} + \sigma^2_{\text{noise}}$ normalizes by the total variance (prior uncertainty + measurement noise). In the implementation, this denominator is clamped to a minimum of $10^{-8}$ for numerical stability when the prior variance is near zero.
 
 ### Bounded mean update
 
@@ -63,6 +63,8 @@ The raw shift $\delta_i = K_i \times \text{innovation}$ is scaled by the **headr
 - If $\delta_i \leq 0$ (pushing down), headroom is $\mu_i$ — distance to the lower bound
 
 This ensures predictions stay within $[0, 1]$ naturally. A feature already at 0.95 being pushed upward has only 0.05 headroom — it barely moves. A feature at 0.5 has 0.5 headroom in either direction and moves freely. Features asymptotically approach 0 and 1 but never cross.
+
+The **observed feature $j$ is exempt** from headroom scaling — its scale factor is always 1.0, so it converges to the observed value regardless of its current position.
 
 ### Covariance update
 
@@ -82,12 +84,16 @@ def kalman_update(mu, Sigma, j, y_j, obs_noise):
     Sigma = Sigma.copy()
 
     S_j = Sigma[:, j]
-    K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
+    denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
+    K_gain = S_j / denom
     delta = K_gain * (y_j - mu[j])
 
-    # Bounded update: scale each feature's shift by available headroom.
+    # Bounded update: scale each predicted feature's shift by available headroom.
+    # The observed feature j is exempt — it should converge to its observed value.
     headroom = np.where(delta > 0, 1.0 - mu, mu)
-    mu += delta * np.clip(headroom, 0.0, 1.0)
+    scale = np.clip(headroom, 0.0, 1.0)
+    scale[j] = 1.0
+    mu += delta * scale
 
     Sigma -= np.outer(K_gain, S_j)
 
@@ -121,15 +127,18 @@ def kalman_update_batch(mu, Sigma, obs_indices, obs_values, obs_noise):
     Sigma = Sigma.copy()
     for j, y_j in zip(obs_indices, obs_values):
         S_j = Sigma[:, j]
-        K_gain = S_j / (Sigma[j, j] + obs_noise ** 2)
+        denom = max(Sigma[j, j] + obs_noise ** 2, 1e-8)
+        K_gain = S_j / denom
         delta = K_gain * (y_j - mu[j])
         headroom = np.where(delta > 0, 1.0 - mu, mu)
-        mu += delta * np.clip(headroom, 0.0, 1.0)
+        scale = np.clip(headroom, 0.0, 1.0)
+        scale[j] = 1.0
+        mu += delta * scale
         Sigma -= np.outer(K_gain, S_j)
     return mu, Sigma
 ```
 
-Sequential application is equivalent to the joint multivariate update (observing all features simultaneously) — this is a property of the Kalman filter.
+For the standard Kalman filter, sequential application is equivalent to the joint multivariate update (observing all features simultaneously). With headroom scaling, the order of observations can produce slightly different results — the headroom depends on the current mean, which changes between updates. In practice the difference is negligible.
 
 ## The diagonal baseline
 

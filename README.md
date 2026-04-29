@@ -2,9 +2,9 @@
 
 **Infer a full skill profile from a few observations.**
 
-One benchmark predicts 37 others. One task observation reveals 120 skills. `skillinfer` learns how capabilities co-vary across a population and fills in the gaps — so you can understand what any agent, person, or team can do without testing everything.
+Observe a few skills, predict the rest — with calibrated uncertainty. `skillinfer` learns how capabilities co-vary across a population and uses that structure to infer a full profile from partial observations.
 
-No neural networks, no training loop, no GPU. A Kalman filter over population covariance: the exact Bayesian posterior in one matrix operation. Under 1ms per update, scales to 1000+ skills.
+A closed-form Bayesian update — no training loop, no GPU. One matrix operation gives you the exact posterior. Under 1ms per update, scales to 1000+ skills.
 
 ## Install
 
@@ -107,7 +107,7 @@ pop = skillinfer.datasets.esco()
 
 ## LLM orchestration
 
-Skill profiles are structured context you feed to an LLM orchestrator — not a heuristic for matching. The LLM reasons about observed vs. inferred skills, balances capability against cost and latency, and applies natural language constraints:
+`skillinfer` profiles are structured context you feed to an LLM orchestrator alongside cost, latency, and business constraints. The LLM reasons about observed vs. inferred skills and applies natural language constraints that no scoring function could replicate:
 
 ```python
 from openai import OpenAI
