@@ -91,8 +91,8 @@ nav:
     - Core Concepts: getting-started/concepts.md
   - Tutorials:
     - LLM Benchmarks: tutorials/llm-benchmarks.md
-    - Human Skills (O*NET): tutorials/human-skills.md
-    - European Skills (ESCO): tutorials/european-skills.md
+    - Human Skills — O*NET: tutorials/human-skills.md
+    - Human Skills — ESCO: tutorials/european-skills.md
     - Agent Orchestration: tutorials/orchestration.md
   - How It Works:
     - The Kalman Update: how-it-works/kalman-update.md
