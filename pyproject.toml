@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "Kostadin Devedzhiev" },
+    { name = "Kostadin Devedzhiev", email = "kgd26@cam.ac.uk" },
 ]
 keywords = [
     "skill-inference",
@@ -23,9 +23,17 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 dependencies = [
     "numpy>=1.24",
@@ -46,7 +54,10 @@ docs = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/kostadindev/skillinfer"
+Documentation = "https://kostadindev.github.io/skillinfer"
 Repository = "https://github.com/kostadindev/skillinfer"
+Issues = "https://github.com/kostadindev/skillinfer/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["skillinfer"]

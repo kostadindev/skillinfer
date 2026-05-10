@@ -1,6 +1,6 @@
 # skillinfer-mcp
 
-MCP server for [skillinfer](https://github.com/kostadindev/bayeskal) — Bayesian skill inference for AI agents and humans.
+MCP server for [skillinfer](https://github.com/kostadindev/skillinfer) — Bayesian skill inference for AI agents and humans.
 
 Lets any MCP-compatible AI agent (Claude, Cursor, VS Code Copilot, etc.) build and query skill profiles via tool calls.
 

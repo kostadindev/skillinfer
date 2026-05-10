@@ -9,3 +9,6 @@ build/
 examples/.data/
 site/
 paper/
+data/
+results/
+.DS_Store
