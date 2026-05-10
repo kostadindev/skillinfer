@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 
-_PARQUET = Path(__file__).parent / "onet.parquet"
+_DATA = Path(__file__).parent / "onet.csv.gz"
 
 
 def onet(normalize: bool = False) -> "Population":
@@ -38,5 +38,5 @@ def onet(normalize: bool = False) -> "Population":
     """
     from skillinfer.population import Population
 
-    df = pd.read_parquet(_PARQUET)
+    df = pd.read_csv(_DATA, index_col=0, compression="gzip")
     return Population.from_dataframe(df, normalize=normalize)

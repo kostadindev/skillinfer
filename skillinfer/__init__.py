@@ -73,7 +73,7 @@ def rank_agents(
     return df.sort_values("expected_score", ascending=False).reset_index(drop=True)
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "Skill",
     "Task",

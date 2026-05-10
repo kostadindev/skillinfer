@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "skillinfer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Infer a full skill profile from a few observations. Few-shot capability estimation for AI agents and humans."
 readme = "README.md"
 license = "MIT"

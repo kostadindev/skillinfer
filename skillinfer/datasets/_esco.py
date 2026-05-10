@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 
-_PARQUET = Path(__file__).parent / "esco.parquet"
+_DATA = Path(__file__).parent / "esco.csv.gz"
 
 
 def esco(normalize: bool = False) -> "Population":
@@ -38,5 +38,5 @@ def esco(normalize: bool = False) -> "Population":
     """
     from skillinfer.population import Population
 
-    df = pd.read_parquet(_PARQUET)
+    df = pd.read_csv(_DATA, index_col=0, compression="gzip")
     return Population.from_dataframe(df, normalize=normalize)
