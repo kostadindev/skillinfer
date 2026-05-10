@@ -108,6 +108,8 @@ def profile(
     method: str = "kalman",
     rank: int | None = None,
     blocks: list[list[str | int]] | dict[str, str | int] | None = None,
+    n_components: int | None = None,
+    gmm_random_state: int | None = 0,
 ) -> Profile
 ```
 
@@ -120,9 +122,11 @@ Create a [`Profile`](profile.md) for a new entity. Inherits skill descriptions f
 | `prior_entity` | `str \| None` | `None` | Use this entity's vector as the prior mean. |
 | `prior_mean` | `np.ndarray \| None` | `None` | Use this array directly as the prior mean. |
 | `noise` | `float \| None` | `None` | Observation noise (std dev). Default is 5% of average feature spread. |
-| `method` | `str` | `"kalman"` | Inference method (selects which prior covariance is used). One of `"kalman"`, `"diagonal"`, `"block-diagonal"`, `"pmf"`. |
+| `method` | `str` | `"kalman"` | Inference method. One of `"kalman"`, `"diagonal"`, `"block-diagonal"`, `"pmf"`, `"gmm-kalman"`. |
 | `rank` | `int \| None` | `None` | Top-r eigencomponents to retain when `method="pmf"`. |
 | `blocks` | `list[list] \| dict \| None` | `None` | Block specification for `method="block-diagonal"`: either a list of feature lists or a `{feature: block_label}` dict. |
+| `n_components` | `int \| None` | `None` | Mixture size M when `method="gmm-kalman"`. |
+| `gmm_random_state` | `int \| None` | `0` | Seed for the EM fit (cached per population). |
 
 If neither `prior_entity` nor `prior_mean` is given, the population mean is used.
 
@@ -132,6 +136,7 @@ If neither `prior_entity` nor `prior_mean` is given, the population mean is used
 - **`"diagonal"`** — Off-diagonal entries zeroed; only the observed feature updates (no-transfer ablation).
 - **`"block-diagonal"`** — Covariance kept inside each block, zeroed across blocks. Useful for restricting transfer to within Skills, within Knowledge, etc.
 - **`"pmf"`** — Rank-`rank` eigentruncation of the covariance (PMF / probabilistic PCA prior). Cheap and serves as a strong linear baseline; variance on directions outside the top-r subspace collapses to zero.
+- **`"gmm-kalman"`** — Gaussian-mixture prior fit on this population by EM. Each observation triggers per-component Kalman updates plus mixture re-weighting; this is the only non-linear option (a surprising observation can flip the dominant cluster). Returns a `GMMProfile`.
 
 **Returns:** [`Profile`](profile.md)
 
@@ -149,6 +154,7 @@ profile = pop.profile(
     method="block-diagonal",
     blocks=[skill_names, knowledge_names, ability_names],
 )                                                            # within-category transfer only
+profile = pop.profile(method="gmm-kalman", n_components=10)  # mixture-of-Gaussians prior
 ```
 
 ---

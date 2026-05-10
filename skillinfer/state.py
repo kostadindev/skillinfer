@@ -647,3 +647,136 @@ class Profile:
         for i, name in enumerate(self.feature_names):
             lines.append(f"{name:<{max_name}}  {self.mu[i]:>8.4f}  {stds[i]:>8.4f}")
         return "\n".join(lines)
+
+
+class GMMProfile(Profile):
+    """Posterior under a Gaussian-mixture prior (GMM-Kalman).
+
+    The prior is ``p(c) = sum_m pi_m N(mu_m, Sigma_m)``. Each observation
+    triggers per-component Kalman updates plus mixture re-weighting via
+    the per-component marginal predictive likelihood. The reported mean
+    and covariance are the mixture marginal:
+
+        mu_hat    = sum_m pi_m mu_m
+        Sigma_hat = sum_m pi_m [Sigma_m + (mu_m - mu_hat)(mu_m - mu_hat)^T]
+
+    See ``_gmm.py`` for the math and the chapter Section 4.5 for the
+    motivation. The ``Profile`` interface (observe, predict, match_score,
+    etc.) is unchanged.
+    """
+
+    def __init__(
+        self,
+        prior_means: list[np.ndarray],
+        prior_covariances: list[np.ndarray],
+        prior_weights: np.ndarray,
+        feature_names: list[str],
+        noise: float = 1e-6,
+    ):
+        from skillinfer._gmm import gmm_marginal
+
+        prior_means = [np.asarray(m, dtype=float).copy() for m in prior_means]
+        prior_covariances = [np.asarray(S, dtype=float).copy() for S in prior_covariances]
+        prior_weights = np.asarray(prior_weights, dtype=float).copy()
+        prior_weights = prior_weights / prior_weights.sum()
+
+        # Prior marginal mean / covariance, used to satisfy the parent
+        # contract (so things like uncertainty_ratio against Sigma_0 still
+        # make sense). The actual GMM math goes through gmm_state below.
+        prior_mean_marg, prior_cov_marg = gmm_marginal(
+            prior_means, prior_covariances, prior_weights,
+        )
+        super().__init__(
+            prior_mean=prior_mean_marg,
+            pop_cov=prior_cov_marg,
+            feature_names=feature_names,
+            noise=noise,
+        )
+        self._prior_means = prior_means
+        self._prior_covariances = prior_covariances
+        self._prior_weights = prior_weights
+        self._gmm_state_cache: tuple[
+            list[np.ndarray], list[np.ndarray], np.ndarray
+        ] | None = None
+
+    @property
+    def n_components(self) -> int:
+        """Number of mixture components M."""
+        return len(self._prior_means)
+
+    @property
+    def gmm_state(self) -> tuple[list[np.ndarray], list[np.ndarray], np.ndarray]:
+        """Posterior (component means, covariances, mixture weights).
+
+        Recomputed lazily from ``self._observed`` so observation order
+        is irrelevant.
+        """
+        if self._gmm_state_cache is None:
+            from skillinfer._gmm import gmm_condition
+
+            if not self._observed:
+                self._gmm_state_cache = (
+                    [m.copy() for m in self._prior_means],
+                    [S.copy() for S in self._prior_covariances],
+                    self._prior_weights.copy(),
+                )
+            else:
+                obs_idx = np.array(list(self._observed.keys()), dtype=int)
+                obs_val = np.array(list(self._observed.values()), dtype=float)
+                self._gmm_state_cache = gmm_condition(
+                    self._prior_means,
+                    self._prior_covariances,
+                    self._prior_weights,
+                    obs_idx, obs_val, self.noise,
+                )
+        return self._gmm_state_cache
+
+    def _compute_marginal(self) -> None:
+        from skillinfer._gmm import gmm_marginal
+
+        means, covs, weights = self.gmm_state
+        mu_hat, Sigma_hat = gmm_marginal(means, covs, weights)
+        self._mu_cache = mu_hat
+        self._sigma_cache = Sigma_hat
+
+    @property
+    def mu(self) -> np.ndarray:
+        if self._mu_cache is None:
+            self._compute_marginal()
+        return self._mu_cache
+
+    @property
+    def Sigma(self) -> np.ndarray:
+        if self._sigma_cache is None:
+            self._compute_marginal()
+        return self._sigma_cache
+
+    @property
+    def weights(self) -> np.ndarray:
+        """Posterior mixture weights given the observations so far."""
+        return self.gmm_state[2].copy()
+
+    def _invalidate_cache(self) -> None:
+        super()._invalidate_cache()
+        self._gmm_state_cache = None
+
+    def copy(self) -> GMMProfile:
+        new = GMMProfile(
+            prior_means=self._prior_means,
+            prior_covariances=self._prior_covariances,
+            prior_weights=self._prior_weights,
+            feature_names=list(self.feature_names),
+            noise=self.noise,
+        )
+        new.n_observations = self.n_observations
+        new._observed = dict(self._observed)
+        new._skills = dict(self._skills)
+        return new
+
+    def __repr__(self) -> str:
+        K = len(self.mu)
+        mean_std = float(np.sqrt(np.diag(self.Sigma)).mean())
+        return (
+            f"GMMProfile(K={K}, M={self.n_components}, "
+            f"n_obs={self.n_observations}, mean_std={mean_std:.4f})"
+        )

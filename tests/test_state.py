@@ -373,3 +373,134 @@ def test_profile_method_kalman_default_matches_explicit(taxonomy):
     b.observe("math", 0.9)
     np.testing.assert_allclose(a.mean(), b.mean(), atol=1e-12)
 
+
+# --- GMM-Kalman ---------------------------------------------------------
+
+
+@pytest.fixture
+def correlated_population():
+    """Population with two clear sub-populations for GMM-Kalman tests."""
+    rng = np.random.default_rng(0)
+    # Cluster A: high cognitive, low physical.
+    n = 60
+    a = np.column_stack([
+        rng.normal(0.8, 0.05, n),  # math
+        rng.normal(0.8, 0.05, n),  # physics
+        rng.normal(0.8, 0.05, n),  # writing
+        rng.normal(0.2, 0.05, n),  # art
+        rng.normal(0.2, 0.05, n),  # strength
+        rng.normal(0.2, 0.05, n),  # speed
+    ])
+    # Cluster B: opposite profile.
+    b = np.column_stack([
+        rng.normal(0.2, 0.05, n),
+        rng.normal(0.2, 0.05, n),
+        rng.normal(0.2, 0.05, n),
+        rng.normal(0.8, 0.05, n),
+        rng.normal(0.8, 0.05, n),
+        rng.normal(0.8, 0.05, n),
+    ])
+    df = pd.DataFrame(
+        np.vstack([a, b]),
+        columns=["math", "physics", "writing", "art", "strength", "speed"],
+    )
+    return Population.from_dataframe(df, normalize=False)
+
+
+def test_gmm_kalman_returns_gmm_profile(correlated_population):
+    from skillinfer import GMMProfile
+
+    pop = correlated_population
+    state = pop.profile(method="gmm-kalman", n_components=2)
+    assert isinstance(state, GMMProfile)
+    assert state.n_components == 2
+    # Prior weights should sum to 1.
+    np.testing.assert_allclose(state.weights.sum(), 1.0, atol=1e-10)
+
+
+def test_gmm_kalman_requires_n_components(correlated_population):
+    with pytest.raises(ValueError, match="n_components"):
+        correlated_population.profile(method="gmm-kalman")
+
+
+def test_gmm_kalman_rejects_prior_overrides(correlated_population):
+    with pytest.raises(ValueError, match="prior_entity"):
+        correlated_population.profile(
+            method="gmm-kalman", n_components=2, prior_entity=correlated_population.entity_names[0],
+        )
+
+
+def test_gmm_kalman_observation_reweights_components(correlated_population):
+    """A surprising observation should shift mixture weights toward the matching cluster."""
+    pop = correlated_population
+    state = pop.profile(method="gmm-kalman", n_components=2)
+    prior_weights = state.weights.copy()
+    # Observe a clearly cognitive value on `math`. The cognitive cluster
+    # (centred near 0.8) should gain weight; the physical cluster
+    # (centred near 0.2) should lose weight.
+    state.observe("math", 0.85)
+    post_weights = state.weights
+    # Identify which prior component is "cognitive" by its math mean.
+    cognitive_idx = int(np.argmax([m[0] for m in state._prior_means]))
+    physical_idx = 1 - cognitive_idx
+    assert post_weights[cognitive_idx] > prior_weights[cognitive_idx]
+    assert post_weights[physical_idx] < prior_weights[physical_idx]
+
+
+def test_gmm_kalman_propagates_to_unobserved_dims(correlated_population):
+    """Observing math (cognitive) should pull writing up and strength down."""
+    pop = correlated_population
+    state = pop.profile(method="gmm-kalman", n_components=2)
+    state.observe("math", 0.85)
+    mu = state.mean()
+    # Cognitive features pulled up.
+    assert mu[state._resolve_index("writing")] > 0.5
+    assert mu[state._resolve_index("physics")] > 0.5
+    # Physical features pulled down.
+    assert mu[state._resolve_index("strength")] < 0.5
+    assert mu[state._resolve_index("art")] < 0.5
+
+
+def test_gmm_kalman_single_component_matches_kalman(correlated_population):
+    """M=1 GMM should agree with full-Sigma Kalman up to EM regularisation."""
+    pop = correlated_population
+    g = pop.profile(method="gmm-kalman", n_components=1)
+    k = pop.profile(method="kalman")
+    g.observe("math", 0.85)
+    k.observe("math", 0.85)
+    # They share the same prior mean (population mean) and roughly the same
+    # covariance (sample vs Ledoit-Wolf), so means should be close.
+    np.testing.assert_allclose(g.mean(), k.mean(), atol=0.05)
+
+
+def test_gmm_kalman_observation_order_invariant(correlated_population):
+    """Posterior must not depend on the order in which observations are recorded."""
+    pop = correlated_population
+    a = pop.profile(method="gmm-kalman", n_components=2)
+    b = pop.profile(method="gmm-kalman", n_components=2)
+    a.observe("math", 0.85)
+    a.observe("strength", 0.25)
+    b.observe("strength", 0.25)
+    b.observe("math", 0.85)
+    np.testing.assert_allclose(a.mean(), b.mean(), atol=1e-10)
+    np.testing.assert_allclose(a.weights, b.weights, atol=1e-10)
+
+
+def test_gmm_kalman_fit_is_cached(correlated_population):
+    """Repeated profile creation must not refit the mixture."""
+    pop = correlated_population
+    pop.profile(method="gmm-kalman", n_components=2)
+    assert len(pop._gmm_cache) == 1
+    pop.profile(method="gmm-kalman", n_components=2)
+    assert len(pop._gmm_cache) == 1
+    pop.profile(method="gmm-kalman", n_components=3)
+    assert len(pop._gmm_cache) == 2
+
+
+def test_gmm_kalman_predict_returns_dataframe(correlated_population):
+    """The standard Profile API must keep working under GMMProfile."""
+    state = correlated_population.profile(method="gmm-kalman", n_components=2)
+    state.observe("math", 0.85)
+    df = state.predict()
+    assert {"feature", "mean", "std", "ci_lower", "ci_upper"}.issubset(df.columns)
+    assert len(df) == 6

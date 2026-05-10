@@ -56,6 +56,8 @@ class Population:
         self._skills: dict[str, Skill] = {
             name: Skill(name) for name in self.feature_names
         }
+        # Cache GMM fits keyed by (n_components, random_state, reg_covar).
+        self._gmm_cache: dict[tuple, tuple] = {}
 
     @property
     def skills(self) -> list[Skill]:
@@ -205,6 +207,44 @@ class Population:
         """Get a named entity's skill vector as a labeled Series."""
         return self.matrix.loc[name].copy()
 
+    def fit_gmm(
+        self,
+        n_components: int,
+        random_state: int | None = 0,
+        reg_covar: float = 1e-6,
+    ) -> tuple[list[np.ndarray], list[np.ndarray], np.ndarray]:
+        """Fit (or recall) a Gaussian-mixture prior on this population's matrix.
+
+        EM is run once per ``(n_components, random_state, reg_covar)`` and
+        cached on the Population, so repeated profile creations reuse the fit.
+
+        Parameters
+        ----------
+        n_components : number of mixture components M.
+        random_state : seed for EM initialisation. Default 0 (deterministic).
+        reg_covar : regulariser added to component covariances during EM.
+
+        Returns
+        -------
+        means, covariances, weights : per-component prior parameters.
+        """
+        from skillinfer._gmm import fit_gmm
+
+        key = (int(n_components), random_state, float(reg_covar))
+        if key not in self._gmm_cache:
+            self._gmm_cache[key] = fit_gmm(
+                self.matrix.values,
+                n_components=n_components,
+                random_state=random_state,
+                reg_covar=reg_covar,
+            )
+        means, covs, weights = self._gmm_cache[key]
+        return (
+            [m.copy() for m in means],
+            [S.copy() for S in covs],
+            weights.copy(),
+        )
+
     def profile(
         self,
         prior_entity: str | None = None,
@@ -213,6 +253,8 @@ class Population:
         method: str = "kalman",
         rank: int | None = None,
         blocks: list[list[str | int]] | dict[str, str | int] | None = None,
+        n_components: int | None = None,
+        gmm_random_state: int | None = 0,
     ):
         """Create a Profile for a new individual.
 
@@ -234,22 +276,56 @@ class Population:
               block; zero across blocks. Requires ``blocks=``.
             - ``"pmf"``: rank-``rank`` eigentruncation of the covariance
               (PMF / probabilistic PCA prior). Requires ``rank=``.
+            - ``"gmm-kalman"``: Gaussian-mixture prior fit on this
+              population by EM. Requires ``n_components=``. Returns a
+              ``GMMProfile`` whose posterior is a mixture of Gaussians.
 
-            All methods use the same Gaussian conditioning machinery; only
-            the prior covariance differs.
+            ``kalman``, ``diagonal``, ``block-diagonal``, and ``pmf`` use
+            the same single-Gaussian conditioning machinery; only the
+            prior covariance differs. ``gmm-kalman`` carries M components
+            in the posterior and re-weights them per observation.
         rank : top-r eigencomponents to retain when ``method="pmf"``.
         blocks : block specification for ``method="block-diagonal"``.
             Either a list of feature-name (or index) lists --- one per
             block --- or a dict mapping feature name to block label.
+        n_components : number of mixture components M when
+            ``method="gmm-kalman"``.
+        gmm_random_state : seed for the EM fit (cached per population).
 
         If neither prior_entity nor prior_mean is given, uses the population mean.
         """
-        from skillinfer.state import Profile
+        from skillinfer.state import GMMProfile, Profile
         from skillinfer._kalman import (
             block_diagonal_covariance,
             diagonal_covariance,
             low_rank_covariance,
         )
+
+        if noise is None:
+            noise = float(np.sqrt(np.diag(self.covariance)).mean() * 0.05)
+            noise = max(noise, 1e-8)
+
+        if method == "gmm-kalman":
+            if n_components is None:
+                raise ValueError("method='gmm-kalman' requires n_components=.")
+            if prior_entity is not None or prior_mean is not None:
+                raise ValueError(
+                    "method='gmm-kalman' uses the fitted mixture as the prior; "
+                    "prior_entity and prior_mean are not supported here."
+                )
+            means, covs, weights = self.fit_gmm(
+                n_components=n_components,
+                random_state=gmm_random_state,
+            )
+            gmm_profile = GMMProfile(
+                prior_means=means,
+                prior_covariances=covs,
+                prior_weights=weights,
+                feature_names=self.feature_names,
+                noise=noise,
+            )
+            gmm_profile._skills = dict(self._skills)
+            return gmm_profile
 
         if prior_entity is not None:
             mu = self.entity(prior_entity)
@@ -278,12 +354,8 @@ class Population:
         else:
             raise ValueError(
                 f"Unknown method: {method!r}. Choose from "
-                "'kalman', 'diagonal', 'block-diagonal', 'pmf'."
+                "'kalman', 'diagonal', 'block-diagonal', 'pmf', 'gmm-kalman'."
             )
-
-        if noise is None:
-            noise = float(np.sqrt(np.diag(self.covariance)).mean() * 0.05)
-            noise = max(noise, 1e-8)
 
         profile = Profile(
             prior_mean=mu,
