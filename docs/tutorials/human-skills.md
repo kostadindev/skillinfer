@@ -1,4 +1,4 @@
-# Tutorial: Human Skills (O*NET)
+# O*NET — Profiling US occupations
 
 Infer a worker's full skill profile from a few task observations using the U.S. Department of Labor's O\*NET taxonomy.
 

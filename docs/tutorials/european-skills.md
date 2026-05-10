@@ -1,4 +1,4 @@
-# Tutorial: European Skills (ESCO)
+# ESCO — Profiling EU occupations
 
 Cross-taxonomy validation with the European Skills taxonomy — a completely different data source that validates `skillinfer` generalises beyond any single taxonomy's design.
 

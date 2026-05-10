@@ -11,7 +11,7 @@ profile.observe("Skill:Programming", 0.92)
 print(profile.predict())
 ```
 
-Both datasets are shipped as compressed Parquet files inside the package (~440 KB total).
+All datasets are shipped inside the package: O\*NET and ESCO as gzipped CSV (~510 KB combined), PIAAC as a small `.npz` of summary statistics (~2 KB).
 
 ---
 
@@ -166,3 +166,79 @@ print(profile.predict())
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `normalize` | `bool` | `False` | Normalise columns to [0, 1]. Data is binary, so this is rarely needed. |
+
+---
+
+## `piaac_prior()`
+
+**PIAAC Cycle 2 US** — within-individual prior derived from the OECD Programme for the International Assessment of Adult Competencies. Unlike `onet()` and `esco()`, this dataset ships **only the summary statistics** (population mean and covariance over 9 dimensions). No individual records are bundled.
+
+```python
+pop = skillinfer.datasets.piaac_prior()
+print(pop)
+# Population(1 entities x 9 skills, shrinkage=None)
+```
+
+The "1 entity" is a placeholder row holding the population mean — `piaac_prior` is built via [`Population.from_covariance`](population.md#from_covariance) and behaves correctly for everything that uses the prior structure (`profile`, `observe`, `predict`, `match_score`, `rank_agents`).
+
+### What's in it
+
+| | |
+|---|---|
+| **Entities** | None bundled — only population summary statistics |
+| **Features** | 9 dimensions (3 IRT-assessed skills + 6 work-use scales) |
+| **Scale** | Min-max scaled to [0, 1] within the PIAAC sample |
+| **n (sample size)** | 2,548 adults with complete records |
+| **Source** | [PIAAC Cycle 2 US PUF](https://nces.ed.gov/surveys/piaac/datafiles.asp), OECD / NCES |
+
+### Dimensions
+
+| Group | Names | Source columns |
+|-------|-------|----------------|
+| **IRT-assessed proficiency** | `literacy`, `numeracy`, `problem_solving` | Mean of 10 plausible values (`PVLIT*`, `PVNUM*`, `PVAPS*`) |
+| **Skill use at work** | `readwork`, `writwork`, `numwork`, `ictwork`, `influence`, `taskdisc` | Weighted likelihood estimates (`*_WLE_CA*`) |
+
+### When to use it (and when not to)
+
+`piaac_prior()` ships a **within-individual** prior — it tells you how skills covary across people, which is what you want when profiling a specific human from partial observations. Use `onet()` or `esco()` instead when you want a **cross-occupation** prior — how skills covary across job types — for cold-starting an entity by their stated occupation.
+
+### How it was preprocessed
+
+1. Load `prgusap2.csv` (PIAAC Cycle 2 US PUF, semicolon-separated)
+2. For each IRT-assessed dimension: take the mean of the 10 plausible values
+3. For each work-use scale: take the published weighted likelihood estimate
+4. Drop rows with any missing dimension (n=2,548 complete cases)
+5. Min-max scale each dimension to [0, 1] (preserves correlations; keeps the package's clipping contract)
+6. Compute population mean and Ledoit-Wolf shrunk covariance
+7. Save as a 2 KB `.npz`
+
+The full prep script is at [`scripts/prepare_piaac_prior.py`](https://github.com/kostadindev/skillinfer/blob/main/scripts/prepare_piaac_prior.py).
+
+### Why the prior, not the rows?
+
+The PIAAC public-use file is large (~35 MB) and shipping individual-level survey records inside a Python wheel is the wrong threshold. The covariance is the only thing the Kalman update needs from the population. By bundling only the derived prior, the dataset:
+
+- Avoids redistributing OECD individual records
+- Sidesteps the "10 plausible values per person" preprocessing question (we make the choice once, document it, and consume the result)
+- Adds 2 KB to the wheel instead of tens of MB
+
+### Population statistics
+
+| Statistic | Value |
+|-----------|-------|
+| Sample size *n* | 2,548 |
+| Dimensions *K* | 9 |
+| Ledoit-Wolf shrinkage | 0.0030 |
+| Top correlation | `literacy` ↔ `numeracy` (r = 0.92) |
+
+### Example
+
+```python
+pop = skillinfer.datasets.piaac_prior()
+profile = pop.profile()
+profile.observe("literacy", 0.85)
+profile.observe("numeracy", 0.80)
+print(profile.predict())
+```
+
+Observing literacy and numeracy moves `problem_solving` from 0.59 (population mean) to ≈0.80 — the lift comes entirely through the off-diagonal covariance with the two assessed cognitive scores.
