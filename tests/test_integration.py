@@ -42,22 +42,21 @@ def test_full_workflow():
     assert phy_mean < pop_phy  # physical went down (anti-correlation)
 
 
-def test_transfer_beats_diagonal():
-    """Full Kalman should predict unobserved features better than diagonal."""
-    # Use larger taxonomy with stronger block structure for reliable transfer
+def test_transfer_beats_prior():
+    """Full Kalman should predict unobserved features better than the prior."""
     tax = _make_taxonomy(n_entities=200, n_features=10, seed=99)
 
     results = skillinfer.validation.held_out_evaluation(
         tax,
-        frac_observed=0.2,
+        frac_observed=0.5,
         n_splits=5,
         obs_noise=0.05,
         seed=42,
     )
 
-    means = results.groupby("method")["cosine_similarity"].mean()
-    # Kalman (with transfer) should be at least as good as diagonal (no transfer)
-    assert means["kalman"] >= means["diagonal"] - 0.01
+    means = results.groupby("method")["mae"].mean()
+    # Kalman should beat the prior (population mean) on MAE
+    assert means["kalman"] < means["prior"]
 
 
 def test_prior_entity_closer_than_population():

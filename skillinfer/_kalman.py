@@ -47,15 +47,7 @@ def condition(
     alpha = np.linalg.solve(M, innovation)         # (n_obs,)
     delta = S_J @ alpha                            # (K,)
 
-    # Bounded update: scale shift by available headroom in [0, 1].
-    # Features near a boundary are barely moved; features at 0.5 move freely.
-    # Observed features are exempt so they converge to their observed values.
-    mu = prior_mean.copy()
-    headroom = np.where(delta > 0, 1.0 - mu, mu)
-    scale = np.clip(headroom, 0.0, 1.0)
-    scale[J] = 1.0
-    mu += delta * scale
-
+    mu = prior_mean + delta
     return mu
 
 

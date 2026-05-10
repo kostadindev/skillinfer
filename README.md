@@ -42,7 +42,7 @@ When you observe one skill, the Kalman update propagates to every other skill vi
 - Skills with **negative covariance** move opposite (observe high Programming → predict low Static Strength)
 - **Independent skills** are unaffected
 
-Each update is scaled by **headroom** — how much room the feature has to move toward the boundary. A feature already at 0.95 barely moves upward; a feature at 0.5 moves freely. This keeps all predictions within [0, 1] naturally.
+The update is the standard closed-form Gaussian conditioning rule, and reported predictions are clipped to `[0, 1]` to match the population's natural scale.
 
 Each `observe()` call is O(K²) — one matrix-vector product. No iteration, no convergence.
 

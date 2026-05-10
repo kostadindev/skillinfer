@@ -66,7 +66,7 @@ The model is most powerful when:
 
 | Assumption | What it means | When it breaks |
 |-----------|---------------|----------------|
-| **Linear-Gaussian (with bounded approximation)** | The standard Kalman update is exact for Gaussian data. Headroom scaling modifies the mean update to keep predictions in [0, 1], which trades exact Gaussianity for bounded outputs. The covariance update is unmodified, so posterior uncertainty is slightly overestimated near boundaries. | Binary/ordinal data (update is approximate); predictions near 0 or 1 (headroom dampens updates) |
+| **Linear-Gaussian** | The Kalman update is exact for Gaussian priors and Gaussian observation noise. Predictions are clipped to [0, 1] when reported to match the population's natural scale. | Binary/ordinal data (update is approximate); observations consistently near 0 or 1 (clipping introduces small bias) |
 | **Stationary skills** | Skills don't change between observations | Long time horizons (skill development over months) |
 | **Point-estimate covariance** | Covariance is estimated once and treated as known | Very few entities relative to number of skills |
 | **Correlated skills** | Method's value comes from off-diagonal structure | Truly independent skills (reverts to per-skill baseline) |

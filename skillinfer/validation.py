@@ -20,14 +20,14 @@ Beyond the thesis:
   - mean_log_likelihood: average log-likelihood of unobserved true values
     under the posterior Gaussian (proper scoring rule that rewards both
     accuracy and calibrated uncertainty). Only computed for the kalman
-    method (diagonal and prior lack per-feature posterior variances from
-    the full covariance update).
+    method (the knn and prior baselines do not produce a posterior
+    covariance).
 """
 
 import numpy as np
 import pandas as pd
 
-from skillinfer._kalman import condition, posterior_covariance, diagonal_update
+from skillinfer._kalman import condition, posterior_covariance
 
 
 def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
@@ -81,10 +81,14 @@ def held_out_evaluation(
 ) -> pd.DataFrame:
     """Hold out entities, observe a fraction of features, predict the rest.
 
-    For each held-out entity, a random subset of features is "observed"
-    (with noise), and the remaining features are predicted. Compares:
-      - **kalman**: full-covariance Kalman filter (with transfer)
-      - **diagonal**: diagonal-only update (no transfer)
+    For each split, 20% of entities are held out. The covariance and mean
+    are re-estimated from the remaining 80% (training set only), ensuring
+    no data leakage into the test predictions.
+
+    Compares three methods:
+      - **kalman**: full-covariance Gaussian conditioning (with transfer)
+      - **knn**: k-nearest-neighbor regression in observed-feature space
+        (k=10, inverse-distance weighted — non-parametric baseline)
       - **prior**: population mean (no observations used)
 
     Parameters
@@ -103,16 +107,16 @@ def held_out_evaluation(
          calibration_coverage, mean_log_likelihood]
 
     The last two columns (calibration_coverage, mean_log_likelihood) are
-    NaN for the diagonal and prior methods, which lack full posterior
-    covariance on unobserved features.
+    NaN for the knn and prior methods (only kalman produces a posterior
+    covariance).
     """
+    from skillinfer._covariance import ledoit_wolf_covariance
+
     if isinstance(frac_observed, (int, float)):
         frac_observed = [frac_observed]
 
     R = pop.matrix.values
     N, K = R.shape
-    Sigma = pop.covariance
-    pop_mean = pop.population_mean
     entity_names = pop.entity_names
 
     rng = np.random.default_rng(seed)
@@ -123,6 +127,12 @@ def held_out_evaluation(
         perm = rng.permutation(N)
         n_test = max(1, N // 5)
         test_idx = perm[:n_test]
+        train_idx = perm[n_test:]
+
+        # Re-estimate covariance and mean from TRAINING entities only
+        R_train = R[train_idx]
+        train_mean = R_train.mean(axis=0)
+        train_cov, _ = ledoit_wolf_covariance(R_train)
 
         for frac in frac_observed:
             n_obs = max(1, int(K * frac))
@@ -138,15 +148,19 @@ def held_out_evaluation(
 
                 # Method 1: Full conditioning (transfer)
                 mu_k = condition(
-                    pop_mean, Sigma, obs_dims, obs_vals, obs_noise,
+                    train_mean, train_cov, obs_dims, obs_vals, obs_noise,
                 )
-                Sigma_k = posterior_covariance(Sigma, obs_dims, obs_noise)
+                Sigma_k = posterior_covariance(train_cov, obs_dims, obs_noise)
 
-                # Method 2: Diagonal (no transfer)
-                mu_d = pop_mean.copy()
-                var_d = np.diag(Sigma).copy()
-                for j, y in zip(obs_dims, obs_vals):
-                    mu_d, var_d = diagonal_update(mu_d, var_d, int(j), float(y), obs_noise)
+                # Method 2: k-NN (k=10, inverse-distance weighted)
+                dists = np.linalg.norm(
+                    R_train[:, obs_dims] - obs_vals, axis=1,
+                )
+                k_neighbors = min(10, len(R_train))
+                topk = np.argpartition(dists, k_neighbors)[:k_neighbors]
+                weights = 1.0 / (dists[topk] + 1e-8)
+                weights /= weights.sum()
+                mu_knn = (R_train[topk] * weights[:, None]).sum(axis=0)
 
                 # Evaluate on unobserved features
                 true = true_vec[unobs_dims]
@@ -169,8 +183,9 @@ def held_out_evaluation(
                     "mean_log_likelihood": _mean_log_likelihood(true, pred_k, var_k),
                 })
 
-                # Diagonal and prior: no full posterior covariance
-                for method, mu_pred in [("diagonal", mu_d), ("prior", pop_mean)]:
+                # k-NN and prior
+                for method, mu_pred in [("knn", mu_knn),
+                                        ("prior", train_mean)]:
                     pred = mu_pred[unobs_dims]
                     mse_val = float(np.mean((pred - true) ** 2))
                     rows.append({
@@ -227,10 +242,10 @@ def uncertainty_shrinkage(state_or_Sigma, Sigma_0: np.ndarray) -> float:
 
 
 def transfer_delta(results: pd.DataFrame, metric: str = "cosine_similarity") -> pd.DataFrame:
-    """Compute the Kalman advantage over the diagonal baseline.
+    """Compute the Kalman advantage over the baseline.
 
     Takes the output of held_out_evaluation() and returns the
-    per-frac_observed difference: kalman - diagonal.
+    per-frac_observed difference: kalman - baseline.
 
     Parameters
     ----------
@@ -239,13 +254,13 @@ def transfer_delta(results: pd.DataFrame, metric: str = "cosine_similarity") -> 
 
     Returns
     -------
-    DataFrame with columns [frac_observed, kalman, diagonal, delta].
+    DataFrame with columns [frac_observed, kalman, baseline, delta].
     """
     means = results.groupby(["frac_observed", "method"])[metric].mean().unstack()
     out = pd.DataFrame({
         "frac_observed": means.index,
         "kalman": means["kalman"].values,
-        "diagonal": means["diagonal"].values,
+        "baseline": means["knn"].values,
     })
-    out["delta"] = out["kalman"] - out["diagonal"]
+    out["delta"] = out["kalman"] - out["baseline"]
     return out.reset_index(drop=True)
