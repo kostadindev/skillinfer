@@ -119,3 +119,85 @@ def diagonal_update(
     var[j] *= (1 - gain)
 
     return mu, var
+
+
+def diagonal_covariance(pop_cov: np.ndarray) -> np.ndarray:
+    """Zero out all off-diagonal entries of pop_cov.
+
+    Used by the Diagonal ablation: each observation only updates the
+    observed feature; no cross-feature transfer.
+    """
+    return np.diag(np.diag(pop_cov)).astype(float, copy=True)
+
+
+def block_diagonal_covariance(
+    pop_cov: np.ndarray,
+    blocks: list[list[int]],
+) -> np.ndarray:
+    """Restrict pop_cov to within-block entries; zero across blocks.
+
+    Used by the Block-diagonal ablation: covariance transfer is allowed
+    inside each block (e.g. within Skills, within Knowledge) but
+    zeroed across blocks. Indices not assigned to any block become
+    diagonal-only.
+
+    Parameters
+    ----------
+    pop_cov : (K, K) population covariance.
+    blocks : list of index lists. Each inner list is one block.
+
+    Returns
+    -------
+    Sigma : (K, K) restricted covariance.
+    """
+    K = pop_cov.shape[0]
+    mask = np.eye(K, dtype=bool)
+    for block in blocks:
+        idx = np.asarray(list(block), dtype=int)
+        if idx.size == 0:
+            continue
+        if idx.min() < 0 or idx.max() >= K:
+            raise ValueError(
+                f"Block index out of range for K={K}: {idx.tolist()}"
+            )
+        mask[np.ix_(idx, idx)] = True
+    Sigma = np.where(mask, pop_cov, 0.0).astype(float, copy=True)
+    Sigma = (Sigma + Sigma.T) * 0.5
+    return Sigma
+
+
+def low_rank_covariance(
+    pop_cov: np.ndarray,
+    rank: int,
+) -> np.ndarray:
+    """Rank-r eigentruncation of pop_cov (PMF / probabilistic PCA prior).
+
+    Computes the eigendecomposition of pop_cov and keeps only the top
+    ``rank`` components: Sigma_r = V_r Lambda_r V_r^T. This is the
+    population prior used by PMF rank-r in Section 4.4.1 of the
+    skillinfer chapter. Variance on directions outside the top-r
+    eigenspace collapses to zero, which is the structural reason PMF
+    intervals are narrower than full-Sigma Kalman.
+
+    Parameters
+    ----------
+    pop_cov : (K, K) symmetric positive-(semi-)definite covariance.
+    rank : number of eigencomponents to retain (1 <= rank <= K).
+
+    Returns
+    -------
+    Sigma_r : (K, K) rank-``rank`` truncation, symmetric.
+    """
+    K = pop_cov.shape[0]
+    if not (1 <= rank <= K):
+        raise ValueError(f"rank must be in [1, {K}], got {rank}")
+
+    Sigma_sym = (pop_cov + pop_cov.T) * 0.5
+    # eigh returns eigenvalues in ascending order; take the top-rank tail.
+    eigvals, eigvecs = np.linalg.eigh(Sigma_sym)
+    eigvals = np.maximum(eigvals, 0.0)
+    V_r = eigvecs[:, -rank:]
+    L_r = eigvals[-rank:]
+    Sigma_r = (V_r * L_r) @ V_r.T
+    Sigma_r = (Sigma_r + Sigma_r.T) * 0.5
+    return Sigma_r

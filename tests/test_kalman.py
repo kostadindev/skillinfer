@@ -3,7 +3,14 @@
 import numpy as np
 import pytest
 
-from skillinfer._kalman import condition, posterior_covariance, diagonal_update
+from skillinfer._kalman import (
+    block_diagonal_covariance,
+    condition,
+    diagonal_covariance,
+    diagonal_update,
+    low_rank_covariance,
+    posterior_covariance,
+)
 
 
 def test_condition_moves_toward_observed():
@@ -146,3 +153,84 @@ def test_diagonal_update_no_transfer():
     for i in [0, 1, 3, 4]:
         assert mu_new[i] == mu[i]
         assert var_new[i] == var[i]
+
+
+def test_diagonal_covariance_zeros_off_diagonal():
+    Sigma = np.array([
+        [0.10, 0.08, 0.02],
+        [0.08, 0.10, 0.03],
+        [0.02, 0.03, 0.10],
+    ])
+    D = diagonal_covariance(Sigma)
+    np.testing.assert_array_equal(np.diag(D), np.diag(Sigma))
+    off = D - np.diag(np.diag(D))
+    assert np.all(off == 0)
+    # Original is not mutated.
+    assert Sigma[0, 1] == 0.08
+
+
+def test_block_diagonal_covariance_keeps_within_blocks():
+    Sigma = np.array([
+        [0.10, 0.08, 0.02, 0.01],
+        [0.08, 0.10, 0.03, 0.04],
+        [0.02, 0.03, 0.10, 0.07],
+        [0.01, 0.04, 0.07, 0.10],
+    ])
+    B = block_diagonal_covariance(Sigma, [[0, 1], [2, 3]])
+    # Within-block entries preserved.
+    assert B[0, 1] == 0.08
+    assert B[2, 3] == 0.07
+    # Across-block entries zeroed.
+    assert B[0, 2] == 0.0
+    assert B[1, 3] == 0.0
+    # Symmetric.
+    np.testing.assert_allclose(B, B.T)
+
+
+def test_block_diagonal_unassigned_index_is_diagonal():
+    Sigma = np.array([
+        [0.10, 0.08, 0.02],
+        [0.08, 0.10, 0.03],
+        [0.02, 0.03, 0.10],
+    ])
+    # Index 2 is not in any block — only its diagonal survives.
+    B = block_diagonal_covariance(Sigma, [[0, 1]])
+    assert B[2, 2] == 0.10
+    assert B[0, 2] == 0.0
+    assert B[1, 2] == 0.0
+
+
+def test_block_diagonal_rejects_out_of_range():
+    Sigma = np.eye(3) * 0.1
+    with pytest.raises(ValueError, match="out of range"):
+        block_diagonal_covariance(Sigma, [[0, 5]])
+
+
+def test_low_rank_covariance_rank_full_recovers_input():
+    rng = np.random.default_rng(0)
+    A = rng.normal(size=(6, 6))
+    Sigma = A @ A.T + np.eye(6) * 0.1
+    Sigma_r = low_rank_covariance(Sigma, rank=6)
+    np.testing.assert_allclose(Sigma_r, Sigma, atol=1e-10)
+
+
+def test_low_rank_covariance_truncates_spectrum():
+    rng = np.random.default_rng(1)
+    A = rng.normal(size=(8, 8))
+    Sigma = A @ A.T + np.eye(8) * 0.05
+    rank = 3
+    Sigma_r = low_rank_covariance(Sigma, rank=rank)
+    eigvals = np.linalg.eigvalsh(Sigma_r)
+    # Exactly `rank` eigenvalues should be non-trivial; the rest near zero.
+    nonzero = np.sum(eigvals > 1e-8)
+    assert nonzero == rank
+    # Symmetric.
+    np.testing.assert_allclose(Sigma_r, Sigma_r.T, atol=1e-12)
+
+
+def test_low_rank_covariance_rejects_bad_rank():
+    Sigma = np.eye(4) * 0.1
+    with pytest.raises(ValueError):
+        low_rank_covariance(Sigma, rank=0)
+    with pytest.raises(ValueError):
+        low_rank_covariance(Sigma, rank=5)
