@@ -210,6 +210,9 @@ class Population:
         prior_entity: str | None = None,
         prior_mean: np.ndarray | None = None,
         noise: float | None = None,
+        method: str = "kalman",
+        rank: int | None = None,
+        blocks: list[list[str | int]] | dict[str, str | int] | None = None,
     ):
         """Create a Profile for a new individual.
 
@@ -221,10 +224,32 @@ class Population:
             e.g. a benchmark score of 55 might really be 53-57. Higher
             noise = gentler updates, more residual uncertainty. Default
             is 5% of the average feature spread in the population.
+        method : inference method (selects which prior covariance the
+            profile uses for Gaussian conditioning):
+
+            - ``"kalman"`` (default): full Ledoit--Wolf covariance.
+            - ``"diagonal"``: zero off-diagonal entries; no cross-feature
+              transfer (the no-transfer ablation).
+            - ``"block-diagonal"``: keep covariance only inside each
+              block; zero across blocks. Requires ``blocks=``.
+            - ``"pmf"``: rank-``rank`` eigentruncation of the covariance
+              (PMF / probabilistic PCA prior). Requires ``rank=``.
+
+            All methods use the same Gaussian conditioning machinery; only
+            the prior covariance differs.
+        rank : top-r eigencomponents to retain when ``method="pmf"``.
+        blocks : block specification for ``method="block-diagonal"``.
+            Either a list of feature-name (or index) lists --- one per
+            block --- or a dict mapping feature name to block label.
 
         If neither prior_entity nor prior_mean is given, uses the population mean.
         """
         from skillinfer.state import Profile
+        from skillinfer._kalman import (
+            block_diagonal_covariance,
+            diagonal_covariance,
+            low_rank_covariance,
+        )
 
         if prior_entity is not None:
             mu = self.entity(prior_entity)
@@ -233,18 +258,66 @@ class Population:
         else:
             mu = self.population_mean.copy()
 
+        if method == "kalman":
+            cov = self.covariance
+        elif method == "diagonal":
+            cov = diagonal_covariance(self.covariance)
+        elif method == "block-diagonal":
+            if blocks is None:
+                raise ValueError(
+                    "method='block-diagonal' requires blocks= "
+                    "(list of feature lists, or {feature: block} dict)."
+                )
+            cov = block_diagonal_covariance(
+                self.covariance, self._resolve_blocks(blocks),
+            )
+        elif method == "pmf":
+            if rank is None:
+                raise ValueError("method='pmf' requires rank=.")
+            cov = low_rank_covariance(self.covariance, int(rank))
+        else:
+            raise ValueError(
+                f"Unknown method: {method!r}. Choose from "
+                "'kalman', 'diagonal', 'block-diagonal', 'pmf'."
+            )
+
         if noise is None:
             noise = float(np.sqrt(np.diag(self.covariance)).mean() * 0.05)
             noise = max(noise, 1e-8)
 
         profile = Profile(
             prior_mean=mu,
-            pop_cov=self.covariance,
+            pop_cov=cov,
             feature_names=self.feature_names,
             noise=noise,
         )
         profile._skills = dict(self._skills)
         return profile
+
+    def _resolve_blocks(
+        self,
+        blocks: list[list[str | int]] | dict[str, str | int],
+    ) -> list[list[int]]:
+        """Resolve a block spec to a list of integer-index lists."""
+        if isinstance(blocks, dict):
+            grouped: dict[object, list[int]] = {}
+            for feat, label in blocks.items():
+                if feat not in self._feature_to_idx:
+                    raise KeyError(f"Unknown feature in blocks: {feat!r}")
+                grouped.setdefault(label, []).append(self._feature_to_idx[feat])
+            return list(grouped.values())
+        resolved: list[list[int]] = []
+        for block in blocks:
+            idxs: list[int] = []
+            for feat in block:
+                if isinstance(feat, str):
+                    if feat not in self._feature_to_idx:
+                        raise KeyError(f"Unknown feature in blocks: {feat!r}")
+                    idxs.append(self._feature_to_idx[feat])
+                else:
+                    idxs.append(int(feat))
+            resolved.append(idxs)
+        return resolved
 
     def pca(self, n_components: int = 15) -> dict:
         """PCA summary of the entity-feature matrix.

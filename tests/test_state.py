@@ -281,3 +281,95 @@ def test_metrics_by_category_shape_mismatch(taxonomy):
     state = taxonomy.profile()
     with pytest.raises(ValueError, match="shape"):
         state.metrics_by_category(np.zeros(state.mu.size + 1))
+
+
+def test_profile_method_diagonal_no_transfer(taxonomy):
+    """method='diagonal' must not propagate observations to other features."""
+    state = taxonomy.profile(method="diagonal")
+    prior = state.mean()
+    state.observe("math", 0.95)
+    new = state.mean()
+    # Observed dim moved.
+    assert new[state._resolve_index("math")] != prior[state._resolve_index("math")]
+    # All other dims unchanged.
+    for f in ["physics", "writing", "art", "strength", "speed"]:
+        j = state._resolve_index(f)
+        assert new[j] == prior[j]
+
+
+def test_profile_method_pmf_propagates_transfer():
+    """method='pmf' retains transfer within the top-r eigenspace."""
+    rng = np.random.default_rng(7)
+    # Build correlated data: features 0-2 share a latent factor.
+    z = rng.normal(size=(80, 1))
+    block_a = z + 0.1 * rng.normal(size=(80, 3))
+    block_b = rng.normal(size=(80, 3))
+    data = np.hstack([block_a, block_b])
+    df = pd.DataFrame(
+        data,
+        columns=["math", "physics", "writing", "art", "strength", "speed"],
+    )
+    pop = Population.from_dataframe(df)
+
+    state = pop.profile(method="pmf", rank=2)
+    prior = state.mean().copy()
+    state.observe("math", 0.95)
+    new = state.mean()
+    # Within-block features should move with math under rank-2 PMF.
+    moved = sum(
+        not np.isclose(new[state._resolve_index(f)], prior[state._resolve_index(f)])
+        for f in ["physics", "writing", "art", "strength", "speed"]
+    )
+    assert moved >= 1
+
+
+def test_profile_method_pmf_requires_rank(taxonomy):
+    with pytest.raises(ValueError, match="rank"):
+        taxonomy.profile(method="pmf")
+
+
+def test_profile_method_block_diagonal_blocks_transfer(taxonomy):
+    """Across-block features must not move under block-diagonal."""
+    blocks = [["math", "physics", "writing"], ["art", "strength", "speed"]]
+    state = taxonomy.profile(method="block-diagonal", blocks=blocks)
+    prior = state.mean().copy()
+    state.observe("math", 0.95)
+    new = state.mean()
+    # At least one within-block feature may move.
+    # Across-block features (art / strength / speed) must not.
+    for f in ["art", "strength", "speed"]:
+        j = state._resolve_index(f)
+        assert np.isclose(new[j], prior[j], atol=1e-12)
+
+
+def test_profile_method_block_diagonal_dict_form(taxonomy):
+    """Dict block spec is equivalent to list-of-lists."""
+    blocks_dict = {
+        "math": "A", "physics": "A", "writing": "A",
+        "art": "B", "strength": "B", "speed": "B",
+    }
+    state = taxonomy.profile(method="block-diagonal", blocks=blocks_dict)
+    state.observe("math", 0.95)
+    j_art = state._resolve_index("art")
+    # Across-block: untouched.
+    assert state.mean()[j_art] == taxonomy.population_mean[j_art]
+
+
+def test_profile_method_block_diagonal_requires_blocks(taxonomy):
+    with pytest.raises(ValueError, match="blocks"):
+        taxonomy.profile(method="block-diagonal")
+
+
+def test_profile_method_unknown_raises(taxonomy):
+    with pytest.raises(ValueError, match="Unknown method"):
+        taxonomy.profile(method="bogus")
+
+
+def test_profile_method_kalman_default_matches_explicit(taxonomy):
+    """Default profile() must match method='kalman' exactly."""
+    a = taxonomy.profile()
+    b = taxonomy.profile(method="kalman")
+    a.observe("math", 0.9)
+    b.observe("math", 0.9)
+    np.testing.assert_allclose(a.mean(), b.mean(), atol=1e-12)
+

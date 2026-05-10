@@ -105,6 +105,9 @@ def profile(
     prior_entity: str | None = None,
     prior_mean: np.ndarray | None = None,
     noise: float | None = None,
+    method: str = "kalman",
+    rank: int | None = None,
+    blocks: list[list[str | int]] | dict[str, str | int] | None = None,
 ) -> Profile
 ```
 
@@ -117,8 +120,18 @@ Create a [`Profile`](profile.md) for a new entity. Inherits skill descriptions f
 | `prior_entity` | `str \| None` | `None` | Use this entity's vector as the prior mean. |
 | `prior_mean` | `np.ndarray \| None` | `None` | Use this array directly as the prior mean. |
 | `noise` | `float \| None` | `None` | Observation noise (std dev). Default is 5% of average feature spread. |
+| `method` | `str` | `"kalman"` | Inference method (selects which prior covariance is used). One of `"kalman"`, `"diagonal"`, `"block-diagonal"`, `"pmf"`. |
+| `rank` | `int \| None` | `None` | Top-r eigencomponents to retain when `method="pmf"`. |
+| `blocks` | `list[list] \| dict \| None` | `None` | Block specification for `method="block-diagonal"`: either a list of feature lists or a `{feature: block_label}` dict. |
 
 If neither `prior_entity` nor `prior_mean` is given, the population mean is used.
+
+**Methods**
+
+- **`"kalman"`** (default) — Full Ledoit–Wolf covariance, propagates evidence to all features.
+- **`"diagonal"`** — Off-diagonal entries zeroed; only the observed feature updates (no-transfer ablation).
+- **`"block-diagonal"`** — Covariance kept inside each block, zeroed across blocks. Useful for restricting transfer to within Skills, within Knowledge, etc.
+- **`"pmf"`** — Rank-`rank` eigentruncation of the covariance (PMF / probabilistic PCA prior). Cheap and serves as a strong linear baseline; variance on directions outside the top-r subspace collapses to zero.
 
 **Returns:** [`Profile`](profile.md)
 
@@ -128,6 +141,14 @@ If neither `prior_entity` nor `prior_mean` is given, the population mean is used
 profile = pop.profile()                                      # population mean prior
 profile = pop.profile(prior_entity="Software Developers")    # entity-specific prior
 profile = pop.profile(noise=0.1)                             # custom noise level
+
+# Alternative inference methods
+profile = pop.profile(method="diagonal")                     # no-transfer baseline
+profile = pop.profile(method="pmf", rank=20)                 # rank-20 PMF prior
+profile = pop.profile(
+    method="block-diagonal",
+    blocks=[skill_names, knowledge_names, ability_names],
+)                                                            # within-category transfer only
 ```
 
 ---
