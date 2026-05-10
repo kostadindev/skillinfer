@@ -236,6 +236,42 @@ Root mean squared error between posterior mean and a ground truth vector.
 
 ---
 
+### `metrics_by_category`
+
+```python
+def metrics_by_category(
+    self,
+    true_vector: np.ndarray,
+    categories: dict[str, str] | None = None,
+    sep: str = ":",
+) -> pd.DataFrame
+```
+
+Per-category prediction metrics on a known truth vector. Splits features into categories — by `sep` in feature names by default (e.g. `Skill:Programming` → `Skill`) — and reports MAE, RMSE, and recovery per group. Recovery is the share of squared error eliminated relative to predicting the prior mean.
+
+**Parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `true_vector` | `np.ndarray` | — | Ground-truth profile, shape `(K,)`. |
+| `categories` | `dict[str, str] \| None` | `None` | Optional `{feature_name: category}` mapping. If `None`, derived by splitting feature names on `sep`. |
+| `sep` | `str` | `":"` | Separator used when deriving categories from feature names. Features without `sep` go into `"uncategorised"`. |
+
+**Returns:** `DataFrame` with columns `[category, n_features, n_observed, mae, rmse, recovery]`.
+
+**Example**
+
+```python
+profile.observe("Skill:Programming", 0.92)
+profile.metrics_by_category(true_vec)
+#    category  n_features  n_observed    mae   rmse  recovery
+# 0   Ability          52           0  0.131  0.171     0.082
+# 1 Knowledge          33           0  0.142  0.184     0.421
+# 2     Skill          35           1  0.103  0.140     0.290
+```
+
+---
+
 ### `similarity`
 
 ```python

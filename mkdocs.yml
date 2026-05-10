@@ -102,4 +102,5 @@ nav:
     - Population: api/population.md
     - Profile: api/profile.md
     - Datasets: api/datasets.md
+    - Validation: api/validation.md
     - Visualization: api/visualization.md

@@ -220,3 +220,64 @@ def test_summary_with_ground_truth(taxonomy):
     assert s["max_error"] >= s["mae"]
     assert -1.0 <= s["cosine_similarity"] <= 1.0
     assert 0.0 <= s["coverage_95"] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# metrics_by_category
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def prefixed_taxonomy():
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        rng.random((30, 6)),
+        columns=[
+            "Skill:reading", "Skill:math",
+            "Knowledge:biology", "Knowledge:law",
+            "Ability:strength", "Ability:dexterity",
+        ],
+    )
+    return Population.from_dataframe(df)
+
+
+def test_metrics_by_category_default_separator(prefixed_taxonomy):
+    state = prefixed_taxonomy.profile()
+    state.observe("Skill:math", 0.9)
+    true_vec = prefixed_taxonomy.entity(prefixed_taxonomy.entity_names[0])
+    df = state.metrics_by_category(true_vec)
+    assert set(df["category"]) == {"Skill", "Knowledge", "Ability"}
+    assert set(df.columns) == {
+        "category", "n_features", "n_observed", "mae", "rmse", "recovery",
+    }
+    skill_row = df[df["category"] == "Skill"].iloc[0]
+    assert skill_row["n_features"] == 2
+    assert skill_row["n_observed"] == 1
+    knowledge_row = df[df["category"] == "Knowledge"].iloc[0]
+    assert knowledge_row["n_observed"] == 0
+
+
+def test_metrics_by_category_custom_mapping(taxonomy):
+    state = taxonomy.profile()
+    true_vec = taxonomy.entity(taxonomy.entity_names[0])
+    cats = {
+        "math": "cognitive", "physics": "cognitive", "writing": "cognitive",
+        "art": "creative",
+        "strength": "physical", "speed": "physical",
+    }
+    df = state.metrics_by_category(true_vec, categories=cats)
+    assert set(df["category"]) == {"cognitive", "creative", "physical"}
+    assert df.loc[df["category"] == "cognitive", "n_features"].iloc[0] == 3
+
+
+def test_metrics_by_category_uncategorised_bucket(taxonomy):
+    state = taxonomy.profile()
+    true_vec = taxonomy.entity(taxonomy.entity_names[0])
+    df = state.metrics_by_category(true_vec)
+    assert list(df["category"]) == ["uncategorised"]
+    assert df["n_features"].iloc[0] == 6
+
+
+def test_metrics_by_category_shape_mismatch(taxonomy):
+    state = taxonomy.profile()
+    with pytest.raises(ValueError, match="shape"):
+        state.metrics_by_category(np.zeros(state.mu.size + 1))

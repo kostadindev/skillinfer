@@ -359,6 +359,72 @@ class Profile:
             return 0.0
         return float(np.trace(self.Sigma) / tr_0)
 
+    def metrics_by_category(
+        self,
+        true_vector: np.ndarray,
+        categories: dict[str, str] | None = None,
+        sep: str = ":",
+    ) -> pd.DataFrame:
+        """Per-category prediction metrics on a known truth vector.
+
+        Splits features into categories (by ``sep`` in feature names by
+        default, e.g. ``Skill:Programming`` -> ``Skill``) and reports
+        MAE, RMSE, and recovery per group. Recovery is the share of
+        squared error eliminated relative to predicting the prior mean.
+
+        Parameters
+        ----------
+        true_vector : (K,) ground-truth profile.
+        categories : optional mapping {feature_name: category}. If None,
+            categories are derived by splitting feature names on ``sep``;
+            features without ``sep`` go into ``"uncategorised"``.
+        sep : separator used to derive categories from feature names.
+
+        Returns
+        -------
+        DataFrame with columns
+        [category, n_features, n_observed, mae, rmse, recovery].
+        """
+        true = np.asarray(true_vector, dtype=float)
+        if true.shape != self.mu.shape:
+            raise ValueError(
+                f"true_vector shape {true.shape} does not match profile {self.mu.shape}"
+            )
+
+        if categories is None:
+            cats = [
+                n.split(sep, 1)[0] if sep in n else "uncategorised"
+                for n in self.feature_names
+            ]
+        else:
+            cats = [categories.get(n, "uncategorised") for n in self.feature_names]
+
+        mu = self.mu
+        prior = self._prior_mean
+        groups: dict[str, list[int]] = {}
+        for i, c in enumerate(cats):
+            groups.setdefault(c, []).append(i)
+
+        rows = []
+        for cat, idxs in groups.items():
+            idx = np.array(idxs, dtype=int)
+            err = mu[idx] - true[idx]
+            prior_err = prior[idx] - true[idx]
+            sse = float(np.dot(err, err))
+            prior_sse = float(np.dot(prior_err, prior_err))
+            recovery = (
+                1.0 - sse / prior_sse if prior_sse > 1e-15 else float("nan")
+            )
+            rows.append({
+                "category": cat,
+                "n_features": len(idx),
+                "n_observed": sum(1 for i in idx if int(i) in self._observed),
+                "mae": float(np.mean(np.abs(err))),
+                "rmse": float(np.sqrt(sse / len(idx))),
+                "recovery": recovery,
+            })
+        return pd.DataFrame(rows).sort_values("category").reset_index(drop=True)
+
     def rmse(self, true_vector: np.ndarray) -> float:
         """Root mean squared error between posterior mean and a target."""
         true_vector = np.asarray(true_vector, dtype=float)
