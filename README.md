@@ -12,8 +12,6 @@ Few-shot capability estimation for AI agents and humans — a closed-form Bayesi
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://kostadindev.github.io/skillinfer)
 [![Downloads](https://static.pepy.tech/badge/skillinfer/month)](https://pepy.tech/project/skillinfer)
 
-<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/posterior_profile.png" alt="Posterior profile with uncertainty bars" width="720">
-
 </div>
 
 ---
@@ -178,11 +176,6 @@ response = client.chat.completions.create(
 ## Visualization
 
 Requires `pip install skillinfer[viz]`.
-
-<div align="center">
-<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/correlation_heatmap.png" alt="Correlation heatmap" width="380">
-<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/skill_embedding.png" alt="Skill embedding" width="380">
-</div>
 
 ```python
 import skillinfer
