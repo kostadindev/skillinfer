@@ -55,14 +55,17 @@ print(profile.predict())                  # predict all 120 skills
 
 ## Why skillinfer?
 
-| | skillinfer | Manual scoring | Train a model |
+Three ways to estimate a skill profile from partial data:
+
+| | **skillinfer** | Hand-scored rubric | Custom-trained model |
 |---|---|---|---|
-| Time to first prediction | seconds | minutes | hours–days |
-| Needs training data | ❌ ships with O\*NET + ESCO | ❌ | ✅ thousands of examples |
-| Uncertainty estimates | ✅ exact, closed-form | ❌ | ⚠️ if you build it |
-| GPU required | ❌ | ❌ | ✅ usually |
-| Cost per update | <1 ms, O(K²) | human-time | inference call |
-| Interpretable | ✅ covariance is inspectable | ✅ | ❌ usually black-box |
+| **Setup** | `pip install`, ships with O\*NET + ESCO | Build the rubric yourself | Collect data, train, validate |
+| **First prediction** | Seconds | Minutes (per profile, by hand) | Hours to days |
+| **Per-update cost** | <1 ms, O(K²) matrix-vector product | Human time | One model inference call |
+| **Uncertainty** | Exact credible intervals from the closed-form posterior | None | Only if you engineer it in |
+| **Hardware** | CPU, no GPU | CPU | Usually GPU for training |
+| **Interpretability** | Inspect the covariance directly | Transparent by construction | Typically opaque |
+| **Best when…** | You have a population matrix and want fast, calibrated few-shot predictions | You only have a handful of entities and rules are stable | You have thousands of labeled examples and need non-linear structure |
 
 ## How it works
 
