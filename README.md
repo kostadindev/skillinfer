@@ -1,10 +1,31 @@
+<div align="center">
+
 # skillinfer
 
-**Infer a full skill profile from a few observations.**
+**Observe a few skills. Predict the rest. With calibrated uncertainty.**
 
-Observe a few skills, predict the rest — with calibrated uncertainty. `skillinfer` learns how capabilities co-vary across a population and uses that structure to infer a full profile from partial observations.
+Few-shot capability estimation for AI agents and humans — a closed-form Bayesian update, no training loop, no GPU.
 
-A closed-form Bayesian update — no training loop, no GPU. One matrix operation gives you the exact posterior. Under 1ms per update, scales to 1000+ skills.
+[![PyPI](https://img.shields.io/pypi/v/skillinfer.svg?color=blue)](https://pypi.org/project/skillinfer/)
+[![Python](https://img.shields.io/pypi/pyversions/skillinfer.svg)](https://pypi.org/project/skillinfer/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://kostadindev.github.io/skillinfer)
+[![Downloads](https://static.pepy.tech/badge/skillinfer/month)](https://pepy.tech/project/skillinfer)
+
+<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/posterior_profile.png" alt="Posterior profile with uncertainty bars" width="720">
+
+</div>
+
+---
+
+## What it does
+
+`skillinfer` learns how capabilities co-vary across a population, then uses that structure to infer a **full** skill profile from **partial** observations — with confidence intervals you can trust.
+
+- **One observation → predictions for all skills.** Observe Programming, get a posterior over 119 other skills via learned covariance.
+- **Closed-form, exact, fast.** Standard Kalman update. **<1 ms** per observation. Scales to **1000+ skills**.
+- **Calibrated uncertainty.** Every prediction comes with a credible interval — observed skills shrink to ~zero variance, anti-correlated skills move opposite.
+- **No training loop.** No GPU. No iteration. One matrix-vector product.
 
 ## Install
 
@@ -12,7 +33,7 @@ A closed-form Bayesian update — no training loop, no GPU. One matrix operation
 pip install skillinfer
 ```
 
-## Quick start
+## 30-second demo
 
 ```python
 import skillinfer
@@ -29,22 +50,35 @@ print(profile.predict())                  # predict all 120 skills
           Skill:Critical Thinking   0.73   0.15      0.43      1.00
               Skill:Programming     0.92   0.01      0.90      0.93  ← observed
                 Skill:Mathematics   0.67   0.12      0.43      0.91
-         Ability:Static Strength   0.10   0.23      0.00      0.55  ← anti-correlated
+         Ability:Static Strength    0.10   0.23      0.00      0.55  ← anti-correlated
 ...
 [120 rows x 5 columns]
 ```
 
+## Why skillinfer?
+
+| | skillinfer | Manual scoring | Train a model |
+|---|---|---|---|
+| Time to first prediction | seconds | minutes | hours–days |
+| Needs training data | ❌ ships with O\*NET + ESCO | ❌ | ✅ thousands of examples |
+| Uncertainty estimates | ✅ exact, closed-form | ❌ | ⚠️ if you build it |
+| GPU required | ❌ | ❌ | ✅ usually |
+| Cost per update | <1 ms, O(K²) | human-time | inference call |
+| Interpretable | ✅ covariance is inspectable | ✅ | ❌ usually black-box |
+
 ## How it works
 
-When you observe one skill, the Kalman update propagates to every other skill via the learned covariance:
+<div align="center">
+<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/ch4_algorithm_pipeline.svg" alt="skillinfer algorithm pipeline" width="820">
+</div>
 
-- Skills with **positive covariance** move in the same direction (observe high Programming → predict high Analytical Reasoning)
-- Skills with **negative covariance** move opposite (observe high Programming → predict low Static Strength)
-- **Independent skills** are unaffected
+Observe one skill → the Kalman update propagates the evidence to every other skill through the learned covariance:
 
-The update is the standard closed-form Gaussian conditioning rule, and reported predictions are clipped to `[0, 1]` to match the population's natural scale.
+- **Positive covariance** → skills move together (high Programming → high Analytical Reasoning)
+- **Negative covariance** → skills move opposite (high Programming → low Static Strength)
+- **Independent skills** → unaffected
 
-Each `observe()` call is O(K²) — one matrix-vector product. No iteration, no convergence.
+That's it. The update is the standard closed-form Gaussian conditioning rule. Predictions are clipped to `[0, 1]` to match the population's natural scale. Each `observe()` call is O(K²) — one matrix-vector product. No iteration, no convergence.
 
 ## Core API
 
@@ -100,10 +134,11 @@ pop = skillinfer.datasets.esco()
 
 | Domain | Observe | Predict |
 |--------|---------|---------|
-| **AI model selection** | 1-2 benchmark scores | All benchmarks + best model for a task |
+| **AI model selection** | 1–2 benchmark scores | All benchmarks + best model for a task |
 | **Human skill profiling** | A few task observations | Full occupational profile (120 skills) |
-| **Human-AI orchestration** | Partial evals for both | Who handles which subtask |
-| **Worker-task matching** | Known competencies | Fit for new roles and tasks |
+| **Human–AI orchestration** | Partial evals for both | Who handles which subtask |
+| **Worker–task matching** | Known competencies | Fit for new roles and tasks |
+| **Active assessment** | Adaptive testing | Pick the next most informative question |
 
 ## LLM orchestration
 
@@ -140,26 +175,14 @@ response = client.chat.completions.create(
 )
 ```
 
-## Export / import
-
-```python
-# Population
-pop.to_csv("population.csv")
-pop.to_parquet("population.parquet")
-pop = skillinfer.Population.from_csv("population.csv")
-pop = skillinfer.Population.from_parquet("population.parquet")
-
-# Profile
-profile.to_json("profile.json")
-restored = skillinfer.Profile.from_json("profile.json")
-
-d = profile.to_dict()   # plain dict, JSON-serialisable
-restored = skillinfer.Profile.from_dict(d)
-```
-
 ## Visualization
 
 Requires `pip install skillinfer[viz]`.
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/correlation_heatmap.png" alt="Correlation heatmap" width="380">
+<img src="https://raw.githubusercontent.com/kostadindev/skillinfer/main/docs/assets/skill_embedding.png" alt="Skill embedding" width="380">
+</div>
 
 ```python
 import skillinfer
@@ -182,14 +205,35 @@ skillinfer.visualization.uncertainty_waterfall(pop, observations)  # uncertainty
 skillinfer.visualization.compare_profiles({"dev": dev, "nurse": nurse})  # side-by-side
 ```
 
+## Export / import
+
+```python
+# Population
+pop.to_csv("population.csv")
+pop.to_parquet("population.parquet")
+pop = skillinfer.Population.from_csv("population.csv")
+pop = skillinfer.Population.from_parquet("population.parquet")
+
+# Profile
+profile.to_json("profile.json")
+restored = skillinfer.Profile.from_json("profile.json")
+
+d = profile.to_dict()   # plain dict, JSON-serialisable
+restored = skillinfer.Profile.from_dict(d)
+```
+
 ## Documentation
 
-Full documentation at [kostadindev.github.io/skillinfer](https://kostadindev.github.io/skillinfer):
+Full documentation at **[kostadindev.github.io/skillinfer](https://kostadindev.github.io/skillinfer)**:
 
-- [Quickstart](https://kostadindev.github.io/skillinfer/getting-started/quickstart/)
-- [Tutorials](https://kostadindev.github.io/skillinfer/tutorials/llm-benchmarks/) — LLM benchmarks, human skills, ESCO, agent orchestration
-- [How It Works](https://kostadindev.github.io/skillinfer/how-it-works/kalman-update/) — Kalman update, covariance estimation, computational cost
-- [API Reference](https://kostadindev.github.io/skillinfer/api/population/) — Population, Profile, Datasets, Visualization
+- 📘 [Quickstart](https://kostadindev.github.io/skillinfer/getting-started/quickstart/)
+- 🎓 [Tutorials](https://kostadindev.github.io/skillinfer/tutorials/llm-benchmarks/) — LLM benchmarks, human skills, ESCO, agent orchestration
+- 🧠 [How it works](https://kostadindev.github.io/skillinfer/how-it-works/kalman-update/) — Kalman update, covariance estimation, computational cost
+- 📚 [API reference](https://kostadindev.github.io/skillinfer/api/population/) — Population, Profile, Datasets, Visualization
+
+## Contributing
+
+Issues, discussions, and PRs welcome. If `skillinfer` helps your work, **starring the repo** ⭐ is the simplest way to support it — and it helps others find the project.
 
 ## License
 
