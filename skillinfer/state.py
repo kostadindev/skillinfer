@@ -780,3 +780,87 @@ class GMMProfile(Profile):
             f"GMMProfile(K={K}, M={self.n_components}, "
             f"n_obs={self.n_observations}, mean_std={mean_std:.4f})"
         )
+
+
+class KNNProfile(Profile):
+    """k-nearest-neighbours profile: non-parametric point predictions.
+
+    Drop-in for ``Profile`` when you want a non-parametric baseline.
+    Observations feed into a kNN regression against the population
+    matrix in observed-feature space (``k`` neighbours, inverse-distance
+    weighted). No posterior covariance is produced — ``Sigma`` is an
+    all-NaN matrix and any uncertainty surface (``std``, confidence
+    intervals, ``match_score.p_above_threshold``) returns NaN / None.
+
+    Useful as a baseline on small-N or binary-sparse data, where the
+    Kalman filter's Gaussian assumption is strained.
+    """
+
+    def __init__(
+        self,
+        pop_matrix: np.ndarray,
+        feature_names: list[str],
+        prior_mean: np.ndarray | None = None,
+        k: int = 10,
+        noise: float = 1e-6,
+    ):
+        pop_matrix = np.asarray(pop_matrix, dtype=float)
+        if pop_matrix.ndim != 2 or pop_matrix.shape[1] != len(feature_names):
+            raise ValueError(
+                f"pop_matrix shape {pop_matrix.shape} doesn't match "
+                f"{len(feature_names)} features."
+            )
+        if pop_matrix.shape[0] < 2:
+            raise ValueError(
+                "kNN needs a population with at least 2 entity rows. "
+                "Covariance-only populations (e.g. piaac_prior) are not "
+                "supported under method='knn'."
+            )
+        if k < 1:
+            raise ValueError(f"k must be >= 1, got {k}")
+
+        K = len(feature_names)
+        prior = (
+            pop_matrix.mean(axis=0).copy() if prior_mean is None
+            else np.asarray(prior_mean, dtype=float).copy()
+        )
+        super().__init__(
+            prior_mean=prior,
+            pop_cov=np.full((K, K), np.nan),
+            feature_names=feature_names,
+            noise=noise,
+        )
+        self._pop_matrix = pop_matrix
+        self.k = int(k)
+
+    @property
+    def mu(self) -> np.ndarray:
+        """(K,) kNN-regressed prediction over the observed features."""
+        if self._mu_cache is None:
+            if not self._observed:
+                self._mu_cache = self._prior_mean.copy()
+            else:
+                obs_idx = np.array(list(self._observed.keys()), dtype=int)
+                obs_val = np.array(list(self._observed.values()), dtype=float)
+                R = self._pop_matrix
+                dists = np.linalg.norm(R[:, obs_idx] - obs_val, axis=1)
+                k_eff = min(self.k, len(R))
+                topk = np.argpartition(dists, k_eff - 1)[:k_eff]
+                weights = 1.0 / (dists[topk] + 1e-8)
+                weights /= weights.sum()
+                self._mu_cache = (R[topk] * weights[:, None]).sum(axis=0)
+        return self._mu_cache
+
+    @property
+    def Sigma(self) -> np.ndarray:
+        """All-NaN covariance — kNN produces point predictions only."""
+        if self._sigma_cache is None:
+            K = len(self.feature_names)
+            self._sigma_cache = np.full((K, K), np.nan)
+        return self._sigma_cache
+
+    def __repr__(self) -> str:
+        return (
+            f"KNNProfile(K={len(self.mu)}, "
+            f"n_obs={self.n_observations}, k={self.k})"
+        )

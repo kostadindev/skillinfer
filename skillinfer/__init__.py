@@ -28,7 +28,7 @@ Modules:
 
 from skillinfer.types import Skill, Task
 from skillinfer.population import Population
-from skillinfer.state import Profile, GMMProfile, MatchResult
+from skillinfer.state import Profile, GMMProfile, KNNProfile, MatchResult
 from skillinfer import visualization
 from skillinfer import datasets
 from skillinfer import validation
@@ -80,6 +80,7 @@ __all__ = [
     "Population",
     "Profile",
     "GMMProfile",
+    "KNNProfile",
     "MatchResult",
     "rank_agents",
     "visualization",

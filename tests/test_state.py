@@ -504,3 +504,66 @@ def test_gmm_kalman_predict_returns_dataframe(correlated_population):
     df = state.predict()
     assert {"feature", "mean", "std", "ci_lower", "ci_upper"}.issubset(df.columns)
     assert len(df) == 6
+
+
+# --- KNN ----------------------------------------------------------------
+
+from skillinfer import KNNProfile
+
+
+def test_knn_returns_knn_profile(taxonomy):
+    profile = taxonomy.profile(method="knn", k=3)
+    assert isinstance(profile, KNNProfile)
+    assert isinstance(profile, Profile)  # still polymorphic with Profile
+
+
+def test_knn_observe_then_predict(taxonomy):
+    profile = taxonomy.profile(method="knn", k=3)
+    profile.observe("math", 0.95)
+    df = profile.predict()
+    assert len(df) == 6
+    assert df["mean"].notna().all()
+    # std and CI columns are NaN for kNN by design.
+    assert df["std"].isna().all()
+    assert df["ci_lower"].isna().all()
+    assert df["ci_upper"].isna().all()
+
+
+def test_knn_uncertainty_surface_is_nan(taxonomy):
+    profile = taxonomy.profile(method="knn")
+    profile.observe("math", 0.9)
+    assert np.isnan(profile.std("physics"))
+    assert np.isnan(profile.Sigma).all()
+    lo, hi = profile.confidence_interval("physics")
+    assert np.isnan(lo) and np.isnan(hi)
+
+
+def test_knn_match_score_returns_score_and_none(taxonomy):
+    profile = taxonomy.profile(method="knn")
+    profile.observe("math", 0.9)
+    result = profile.match_score({"math": 1.0, "physics": 0.5}, threshold=0.5)
+    assert np.isfinite(result.score)
+    assert np.isnan(result.std)
+    assert np.isnan(result.ci_lower) and np.isnan(result.ci_upper)
+    assert result.p_above_threshold is None
+
+
+def test_knn_rejects_covariance_only_population():
+    import skillinfer
+    piaac = skillinfer.datasets.piaac_prior()
+    with pytest.raises(ValueError, match="at least 2 entity rows"):
+        piaac.profile(method="knn")
+
+
+def test_knn_rejects_invalid_k(taxonomy):
+    with pytest.raises(ValueError, match="k must be"):
+        taxonomy.profile(method="knn", k=0)
+
+
+def test_knn_with_prior_entity(taxonomy):
+    name = taxonomy.entity_names[0]
+    profile = taxonomy.profile(method="knn", prior_entity=name)
+    np.testing.assert_allclose(profile.mu, taxonomy.entity(name))
+    profile.observe("math", 0.9)
+    # With observations, kNN takes over from the prior_entity init.
+    assert not np.allclose(profile.mu, taxonomy.entity(name))

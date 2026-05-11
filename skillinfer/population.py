@@ -255,6 +255,7 @@ class Population:
         blocks: list[list[str | int]] | dict[str, str | int] | None = None,
         n_components: int | None = None,
         gmm_random_state: int | None = 0,
+        k: int = 10,
     ):
         """Create a Profile for a new individual.
 
@@ -279,11 +280,17 @@ class Population:
             - ``"gmm-kalman"``: Gaussian-mixture prior fit on this
               population by EM. Requires ``n_components=``. Returns a
               ``GMMProfile`` whose posterior is a mixture of Gaussians.
+            - ``"knn"``: non-parametric kNN regression in observed-
+              feature space (``k`` neighbours, inverse-distance
+              weighted). Returns a ``KNNProfile``; point predictions
+              only, no posterior covariance — ``std``, CIs, and any
+              uncertainty surface are NaN / None.
 
             ``kalman``, ``diagonal``, ``block-diagonal``, and ``pmf`` use
             the same single-Gaussian conditioning machinery; only the
             prior covariance differs. ``gmm-kalman`` carries M components
             in the posterior and re-weights them per observation.
+            ``knn`` does not produce a posterior at all.
         rank : top-r eigencomponents to retain when ``method="pmf"``.
         blocks : block specification for ``method="block-diagonal"``.
             Either a list of feature-name (or index) lists --- one per
@@ -291,10 +298,11 @@ class Population:
         n_components : number of mixture components M when
             ``method="gmm-kalman"``.
         gmm_random_state : seed for the EM fit (cached per population).
+        k : number of neighbours when ``method="knn"`` (default 10).
 
         If neither prior_entity nor prior_mean is given, uses the population mean.
         """
-        from skillinfer.state import GMMProfile, Profile
+        from skillinfer.state import GMMProfile, KNNProfile, Profile
         from skillinfer._kalman import (
             block_diagonal_covariance,
             diagonal_covariance,
@@ -304,6 +312,23 @@ class Population:
         if noise is None:
             noise = float(np.sqrt(np.diag(self.covariance)).mean() * 0.05)
             noise = max(noise, 1e-8)
+
+        if method == "knn":
+            if prior_entity is not None:
+                mu = self.entity(prior_entity)
+            elif prior_mean is not None:
+                mu = np.asarray(prior_mean, dtype=float).copy()
+            else:
+                mu = self.population_mean.copy()
+            knn_profile = KNNProfile(
+                pop_matrix=self.matrix.values,
+                feature_names=self.feature_names,
+                prior_mean=mu,
+                k=k,
+                noise=noise,
+            )
+            knn_profile._skills = dict(self._skills)
+            return knn_profile
 
         if method == "gmm-kalman":
             if n_components is None:
@@ -354,7 +379,8 @@ class Population:
         else:
             raise ValueError(
                 f"Unknown method: {method!r}. Choose from "
-                "'kalman', 'diagonal', 'block-diagonal', 'pmf', 'gmm-kalman'."
+                "'kalman', 'diagonal', 'block-diagonal', 'pmf', "
+                "'gmm-kalman', 'knn'."
             )
 
         profile = Profile(
